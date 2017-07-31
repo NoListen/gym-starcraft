@@ -1,3 +1,6 @@
+# Modification
+It has been adapted to [Torchcraft v 1.3.0](https://github.com/TorchCraft/TorchCraft/releases) and [BWAPI v 4.1.2] (https://github.com/bwapi/bwapi/releases). It doesn't need torchcraft-py anymore because [Torchcraft v 1.3.0](https://github.com/TorchCraft/TorchCraft/releases) supports python API.
+
 # gym-starcraft
 Gym StarCraft is an environment bundle for OpenAI Gym. It is based on [Facebook's TorchCraft](https://github.com/TorchCraft/TorchCraft), which is a bridge between Torch and StarCraft for AI research.
 
