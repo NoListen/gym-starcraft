@@ -9,12 +9,12 @@ import gym_starcraft.utils as utils
 class StarCraftEnv(gym.Env):
     def __init__(self, server_ip, server_port, speed, frame_skip, self_play,
                  max_episode_steps):
-        self.client = tc.Client()
+        self.ip = server_ip
+	self.port = server_port
+	self.client = tc.Client()
         self.client.connect(server_ip, server_port)
 
-        # state may encounter some problems
-        self.state = self.client.state.d
-
+	self.state = self.client.init(micro_battles=True)
         self.speed = speed
         self.frame_skip = frame_skip
         self.self_play = self_play
@@ -38,8 +38,8 @@ class StarCraftEnv(gym.Env):
         self.episode_steps += 1
 
         self.client.send(self._make_commands(action))
-        self.client.receive()
-        self.state = self.client.state.d
+        #self.client.receive()
+        self.state = self.client.recv()
         self.obs = self._make_observation()
         reward = self._compute_reward()
         done = self._check_done()
@@ -55,7 +55,7 @@ class StarCraftEnv(gym.Env):
             # self.client.send([proto.concat_cmd(proto.commands['restart'])])
             self.client.send([tcc.restart])
             self.client.receive()
-            while not bool(self.client.state.d['game_ended']):
+            while not bool(self.state.game_ended):
                 self.client.send([])
                 self.client.receive()
 
@@ -63,7 +63,7 @@ class StarCraftEnv(gym.Env):
         self.episode_steps = 0
 
         self.client.close()
-        self.client.connect()
+        self.client.connect(self.ip, self.port)
         # setup = [proto.concat_cmd(proto.commands['set_speed'], self.speed),
         #          proto.concat_cmd(proto.commands['set_gui'], 1),
         #          proto.concat_cmd(proto.commands['set_frameskip'],
@@ -78,8 +78,8 @@ class StarCraftEnv(gym.Env):
             ]
 
         self.client.send(setup)
-        self.client.receive()
-        self.state = self.client.state.d
+        #self.client.receive()
+        self.state = self.client.recv()
 
         self.obs = self._make_observation()
         self.obs_pre = self.obs
@@ -107,7 +107,7 @@ class StarCraftEnv(gym.Env):
 
     def _check_done(self):
         """Returns true if the episode was ended"""
-        return bool(self.state['game_ended']) or self.state['battle_just_ended']
+        return bool(self.state.game_ended) or self.state.battle_just_ended
 
     def _get_info(self):
         """Returns a dictionary contains debug info"""

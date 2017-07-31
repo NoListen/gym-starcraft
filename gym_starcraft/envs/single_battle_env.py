@@ -38,12 +38,13 @@ class SingleBattleEnv(sc.StarCraftEnv):
         myself = None
         enemy_id = None
         enemy = None
-        for uid, ut in self.state['units_myself'].iteritems():
-            myself_id = uid
-            myself = ut
-        for uid, ut in self.state['units_enemy'].iteritems():
-            enemy_id = uid
-            enemy = ut
+        for unit in self.state.units[0]:
+            myself_id = unit.id
+
+	# ut means what in original code.
+
+        for unit in self.state.units[1]:
+            enemy_id = unit.id
 
         if action[0] > 0:
             # Attack action
@@ -71,10 +72,10 @@ class SingleBattleEnv(sc.StarCraftEnv):
     def _make_observation(self):
         myself = None
         enemy = None
-        for uid, ut in self.state['units_myself'].iteritems():
-            myself = ut
-        for uid, ut in self.state['units_enemy'].iteritems():
-            enemy = ut
+        for unit in self.state.units[0]:
+            myself = unit
+        for unit in self.state.units[1]:
+            enemy = unit
 
         obs = np.zeros(self.observation_space.shape)
 
@@ -104,9 +105,9 @@ class SingleBattleEnv(sc.StarCraftEnv):
             reward = 15
         if self.obs_pre[0] > self.obs[0]:
             reward = -10
-        if self._check_done() and not bool(self.state['battle_won']):
+        if self._check_done() and not bool(self.state.battle_won):
             reward = -500
-        if self._check_done() and bool(self.state['battle_won']):
+        if self._check_done() and bool(self.state.battle_won):
             reward = 1000
             self.episode_wins += 1
         if self.episode_steps == self.max_episode_steps:
