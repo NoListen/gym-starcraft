@@ -1,7 +1,8 @@
 import numpy as np
 
 from gym import spaces
-from torchcraft_py import proto
+# from torchcraft_py import proto
+import torchcraft.Constants as tcc
 import gym_starcraft.utils as utils
 
 import starcraft_env as sc
@@ -49,9 +50,10 @@ class SingleBattleEnv(sc.StarCraftEnv):
             if myself is None or enemy is None:
                 return cmds
             # TODO: compute the enemy id based on its position
-            cmds.append(proto.concat_cmd(
-                proto.commands['command_unit_protected'], myself_id,
-                proto.unit_command_types['Attack_Unit'], enemy_id))
+            # cmds.append(proto.concat_cmd(
+            #     proto.commands['command_unit_protected'], myself_id,
+            #     proto.unit_command_types['Attack_Unit'], enemy_id))
+            cmds.append([tcc.command_unit_protected, myself_id, tcc.unitcommandtypes.Attack_Unit, enemy_id])
         else:
             # Move action
             if myself is None or enemy is None:
@@ -59,9 +61,10 @@ class SingleBattleEnv(sc.StarCraftEnv):
             degree = action[1] * 180
             distance = (action[2] + 1) * DISTANCE_FACTOR
             x2, y2 = utils.get_position(degree, distance, myself.x, -myself.y)
-            cmds.append(proto.concat_cmd(
-                proto.commands['command_unit_protected'], myself_id,
-                proto.unit_command_types['Move'], -1, x2, -y2))
+            # cmds.append(proto.concat_cmd(
+            #     proto.commands['command_unit_protected'], myself_id,
+            #     proto.unit_command_types['Move'], -1, x2, -y2))
+            cmds.append([tcc.command_unit_protected, myself_id, tcc.unitcommandtypes.Move, -1, x2, -y2])
 
         return cmds
 

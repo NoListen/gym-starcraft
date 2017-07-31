@@ -1,14 +1,18 @@
 import gym
 
-import torchcraft_py.torchcraft as tc
-import torchcraft_py.proto as proto
+# import torchcraft_py.torchcraft as tc
+import torchcraft.Constants as tcc
+import torchcraft as tc
 import gym_starcraft.utils as utils
 
 
 class StarCraftEnv(gym.Env):
     def __init__(self, server_ip, server_port, speed, frame_skip, self_play,
                  max_episode_steps):
-        self.client = tc.Client(server_ip, server_port)
+        self.client = tc.Client()
+        self.client.connect(server_ip, server_port)
+
+        # state may encounter some problems
         self.state = self.client.state.d
 
         self.speed = speed
@@ -48,7 +52,8 @@ class StarCraftEnv(gym.Env):
         utils.print_progress(self.episodes, self.episode_wins)
 
         if not self.self_play and self.episode_steps == self.max_episode_steps:
-            self.client.send([proto.concat_cmd(proto.commands['restart'])])
+            # self.client.send([proto.concat_cmd(proto.commands['restart'])])
+            self.client.send([tcc.restart])
             self.client.receive()
             while not bool(self.client.state.d['game_ended']):
                 self.client.send([])
@@ -59,11 +64,19 @@ class StarCraftEnv(gym.Env):
 
         self.client.close()
         self.client.connect()
-        setup = [proto.concat_cmd(proto.commands['set_speed'], self.speed),
-                 proto.concat_cmd(proto.commands['set_gui'], 1),
-                 proto.concat_cmd(proto.commands['set_frameskip'],
-                                  self.frame_skip),
-                 proto.concat_cmd(proto.commands['set_cmd_optim'], 1)]
+        # setup = [proto.concat_cmd(proto.commands['set_speed'], self.speed),
+        #          proto.concat_cmd(proto.commands['set_gui'], 1),
+        #          proto.concat_cmd(proto.commands['set_frameskip'],
+        #                           self.frame_skip),
+        #          proto.concat_cmd(proto.commands['set_cmd_optim'], 1)]
+
+        setup = [
+            [tcc.set_speed, self.speed],
+            [tcc.set_gui, 1],
+            [tcc.set_frameskip, self.frame_skip],
+            [tcc.set_cmd_optim, self.]
+            ]
+
         self.client.send(setup)
         self.client.receive()
         self.state = self.client.state.d

@@ -1,5 +1,6 @@
 from setuptools import setup
 
+# used to install package.
 setup(name='gym_starcraft',
       version='0.0.1',
       description='StarCraft environment for OpenAI Gym',
