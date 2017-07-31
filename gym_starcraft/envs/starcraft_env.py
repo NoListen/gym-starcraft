@@ -74,7 +74,7 @@ class StarCraftEnv(gym.Env):
             [tcc.set_speed, self.speed],
             [tcc.set_gui, 1],
             [tcc.set_frameskip, self.frame_skip],
-            [tcc.set_cmd_optim, self.]
+            [tcc.set_cmd_optim, 1]
             ]
 
         self.client.send(setup)
