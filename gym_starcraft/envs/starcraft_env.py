@@ -54,6 +54,7 @@ class StarCraftEnv(gym.Env):
         if not self.self_play and self.episode_steps == self.max_episode_steps:
             # self.client.send([proto.concat_cmd(proto.commands['restart'])])
             self.client.send([tcc.restart])
+            #self.client.send([[tcc.set_map, 'Map/BroodWar/micro/2dragoons_5marines.scm',0],[tcc.restart]])
             self.client.receive()
             while not bool(self.state.game_ended):
                 self.client.send([])
@@ -80,7 +81,8 @@ class StarCraftEnv(gym.Env):
         self.client.send(setup)
         #self.client.receive()
         self.state = self.client.recv()
-
+        import time; time.sleep(1)
+        print(len(self.state.units[1]), len(self.state.units[0]))
         self.obs = self._make_observation()
         self.obs_pre = self.obs
         return self.obs
