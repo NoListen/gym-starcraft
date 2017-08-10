@@ -51,7 +51,6 @@ class SingleBattleEnv(sc.StarCraftEnv):
         if action[0] > 0:
             # Attack action
             if myself is None or enemy is None:
-                print "you escape????"
                 return cmds
             # TODO: compute the enemy id based on its position
             # cmds.append(proto.concat_cmd(

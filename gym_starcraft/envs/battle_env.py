@@ -8,36 +8,70 @@ import gym_starcraft.utils as utils
 import starcraft_env as sc
 
 DISTANCE_FACTOR = 16
-MYSELF_NUM = 5
-ENEMY_NUM = 5
+MYSELF_NUM = 5.
+ENEMY_NUM = 5.
 
 # this data needs to be regularized
 # Not consider the air temporally
 class data_unit(object):
-    def __init__(self):
-        self.health = None
-        self.x = None
-        self.y = None
-
-        # the id may be assigned by myself.
-        # an order. The id would be reordered from zero to one.
-        self.id = None
-
-        self.shield = None
-        self.attackCD = None
-        self.type = None
-        # self.armor = 1
-        self.groundRange = None
-        self.groundATK = None
+    def __init__(self, unit):
+        self.health = unit.health
+        self.x = unit.x
+        self.y = unit.y
+        self.shield = unit.shield
+        self.attackCD = unit.attackCD
+        # the type is encoded to be one-hot, but is not considered temporally
+        self.type = unit.type
+        self.groundATK = unit.groundATK
+        self.groundRange = unit.groundRange
+        self.under_attack = unit.under_attack
+        self.attacking = unit.attacking
+        #TODO maintain a TOP-K list
 
 
-        # maintain a top K distance.
-        # bread-first.
 
+    def update_data(self, unit):
+        self.health  unit.health
+        self.x = unit.x
+        self.y = unit.y
+        self.shield = unit.shield
+        self.attackCD = unit.attackCD
+        self.under_attack = unit.under_attack
+        self.attacking = unit.attacking
+        if self.health <= 0: # die
+            return False
+        return True
 
-    # def observation(self):
-        # return
+    def extract_data(self):
+        # type not included
+        return [self.x, self.y, self.health, self.shield, self.attackCD, self.groundATK, self.groundRange,
+                self.under_attack, self.attacking]
 
+class data_unit_dict(object):
+    # Do not consider those died.
+    def __init__(self, units, flag):
+        self.units_dict = {}
+        self.id_mapping = {}
+        # myself 0. enemy 1.
+        self.flag = flag
+        for i in range(len(units)):
+            unit = units[i]
+            self.id_mapping[unit.id] = i
+            # use the idx to choose the input order | maybe not necessary
+            self.units_dict[i] = data_unit(unit)
+
+    def update(self, units):
+        for u in units:
+            id = self.id_mapping[u.id]
+            alive = self.units_dict[id].update_date(u)
+            if not alive:
+                del(self.units_dict[id])
+
+    def extract_data(self):
+        data_list = []
+        for u in units:
+            data_list.append(u.extract_data())
+        return np.array(data_list)
 
 
 
@@ -48,7 +82,9 @@ class SingleBattleEnv(sc.StarCraftEnv):
                                               frame_skip, self_play,
                                               max_episode_steps)
         self.myself_health = None
-        self.enemy_heath = None
+        self.enemy_health = None
+        self.delta_myself_health = 0
+        self.delta_enemy_health = 0
 
     def _action_space(self):
         # attack or move, move_degree, move_distance
@@ -59,10 +95,12 @@ class SingleBattleEnv(sc.StarCraftEnv):
     def _observation_space(self):
         # hit points, cooldown, ground range, is enemy, degree, distance (myself)
         # hit points, cooldown, ground range, is enemy (enemy)
-        obs_low = [0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-        obs_high = [100.0, 100.0, 1.0, 1.0, 1.0, 50.0, 100.0, 100.0, 1.0, 1.0]
+        # obs_low = [0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        obs_low = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        #            x      y      health shield CD    ATK     range  under_attack
+        obs_high = [400.0, 300.0, 100.0, 100.0, 100.0, 100.0, 100.0, 1.0, 1.0]
+        # obs_high = [100.0, 100.0, 1.0, 1.0, 1.0, 50.0, 100.0, 100.0, 1.0, 1.0]
         return spaces.Box(np.array(obs_low), np.array(obs_high))
-
 
     def _make_commands(self, action):
         cmds = []
@@ -74,11 +112,13 @@ class SingleBattleEnv(sc.StarCraftEnv):
         enemy_id = None
         enemy = None
         for unit in self.state.units[0]:
+            myself = unit
             myself_id = unit.id
 
-	# ut means what in original code.
+        # ut means what in original code.
 
         for unit in self.state.units[1]:
+            enemy = unit
             enemy_id = unit.id
 
         if action[0] > 0:
@@ -89,7 +129,6 @@ class SingleBattleEnv(sc.StarCraftEnv):
             # cmds.append(proto.concat_cmd(
             #     proto.commands['command_unit_protected'], myself_id,
             #     proto.unit_command_types['Attack_Unit'], enemy_id))
-            print "HHHHHHHHHHHOLY SHIT"
             cmds.append([tcc.command_unit_protected, myself_id, tcc.unitcommandtypes.Attack_Unit, enemy_id])
         else:
             # Move action
@@ -97,69 +136,46 @@ class SingleBattleEnv(sc.StarCraftEnv):
                 return cmds
             degree = action[1] * 180
             distance = (action[2] + 1) * DISTANCE_FACTOR
-            x2, y2 = utils.get_position(degree, distance, myself.x, -myself.y)
-            # cmds.append(proto.concat_cmd(
-            #     proto.commands['command_unit_protected'], myself_id,
-            #     proto.unit_command_types['Move'], -1, x2, -y2))
-            cmds.append([tcc.command_unit_protected, myself_id, tcc.unitcommandtypes.Move, -1, x2, -y2])
-
+            x2, y2 = utils.get_position(degree, distance, myself.x, myself.y)
+            cmds.append([tcc.command_unit_protected, myself_id, tcc.unitcommandtypes.Move, -1, int(x2), int(y2)])
         return cmds
 
 
     def _make_observation(self):
-        myself = None
-        enemy = None
-        # Well, some units would die in the process
-
+        # used to compute the rewards.
         myself_health = reduce(lambda x,y: x+y, [unit.health for unit in self.state.units[0]])
         enemy_health = reduce(lambda x,y: x+y, [unit.health for unit in self.state.units[1]])
+        self.delta_enemy_health = self.enemy_health - enemy_health
+        self.delta_myself_health = self.myself_health - myself_health
+        self.enemy_health = enemy_health
+        self.myself_health = myself_health
 
         # the shape needs to be modified.
-        obs = np.zeros(self.observation_space.shape)
+        # obs = np.zeros(self.observation_space.shape)
 
-        if myself is not None and enemy is not None:
-            obs[0] = myself.health
-            obs[1] = myself.groundCD
-            obs[2] = myself.groundRange / DISTANCE_FACTOR - 1
-            obs[3] = 0.0
-            obs[4] = utils.get_degree(myself.x, -myself.y, enemy.x,
-                                      -enemy.y) / 180
-            obs[5] = utils.get_distance(myself.x, -myself.y, enemy.x,
-                                        -enemy.y) / DISTANCE_FACTOR - 1
-            obs[6] = enemy.health
-            obs[7] = enemy.groundCD
-            obs[8] = enemy.groundRange / DISTANCE_FACTOR - 1
-            obs[9] = 1.0
-        else:
-            obs[9] = 1.0
+        # I'd like to represent the distance in that hot map.
+        if self.myself_obs_dict is None:
+            self.myself_obs_dict = data_unit_dict(self.state.units[0])
 
-        return obs
+        if self.enemy_obs_dict is None:
+            self.enemy_obs_dict = data_unit_dict(self.state.units[1])
+
+        self.myself_obs_dict.update(self.state.units[0])
+        self.enemy_obs_dict.update(self.state.units[1])
+
+
+        return [self.myself_obs_dict.extract_data(), self.enemy_obs_dict.extract_data()]
 
     # return reward as a list.
     # I need to know the range at first.
     def _compute_reward(self):
-        reward = 0
-        #too far.
-        if self.obs[5] + 1 > 1.5:
-            reward = -1
-        # the loss of the enemy
-        if self.obs_pre[6] > self.obs[6]:
-            reward = 15
-        # the loss of myself
-        if self.obs_pre[0] > self.obs[0]:
-            reward = -10
-        # lose
-        if self._check_done() and not bool(self.state.battle_won):
-            reward = -500
-        # enemy won
-        if self._check_done() and bool(self.state.battle_won):
-            reward = 1000
-            self.episode_winfs += 1
-        # stop before end.
-        if self.episode_steps == self.max_episode_steps:
-            reward = -500
+        reward = self.delta_enemy_health/ENEMY_NUM - self.delta_myself_health/MYSELF_NUM
         return reward
 
     def data_reset(self):
         self.myself_health = MYSELF_NUM * 100
-        self.enemy_heath = ENEMY_NUM * 100
+        self.enemy_health = ENEMY_NUM * 100
+        self.delta_myself_health = 0
+        self.delta_enemy_health = 0
+        self.myself_obs_dict = None
+        self.enemy_obs_dict = None
