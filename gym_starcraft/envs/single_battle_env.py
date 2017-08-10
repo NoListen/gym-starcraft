@@ -39,21 +39,25 @@ class SingleBattleEnv(sc.StarCraftEnv):
         enemy_id = None
         enemy = None
         for unit in self.state.units[0]:
+            myself = unit
             myself_id = unit.id
 
 	# ut means what in original code.
 
         for unit in self.state.units[1]:
+            enemy = unit
             enemy_id = unit.id
 
         if action[0] > 0:
             # Attack action
             if myself is None or enemy is None:
+                print "you escape????"
                 return cmds
             # TODO: compute the enemy id based on its position
             # cmds.append(proto.concat_cmd(
             #     proto.commands['command_unit_protected'], myself_id,
             #     proto.unit_command_types['Attack_Unit'], enemy_id))
+            print "HHHHHHHHHHHHHHHHHHHHHHHHHHHHOLY SHIT", enemy_id
             cmds.append([tcc.command_unit_protected, myself_id, tcc.unitcommandtypes.Attack_Unit, enemy_id])
         else:
             # Move action
@@ -61,22 +65,29 @@ class SingleBattleEnv(sc.StarCraftEnv):
                 return cmds
             degree = action[1] * 180
             distance = (action[2] + 1) * DISTANCE_FACTOR
-            x2, y2 = utils.get_position(degree, distance, myself.x, -myself.y)
+            x2, y2 = utils.get_position(degree, distance, myself.x, myself.y)
             # cmds.append(proto.concat_cmd(
             #     proto.commands['command_unit_protected'], myself_id,
             #     proto.unit_command_types['Move'], -1, x2, -y2))
-            cmds.append([tcc.command_unit_protected, myself_id, tcc.unitcommandtypes.Move, -1, x2, -y2])
-
+            cmds.append([tcc.command_unit_protected, myself_id, tcc.unitcommandtypes.Move, -1, int(x2), int(y2)])
+        print cmds, "commands"
         return cmds
 
     def _make_observation(self):
         myself = None
         enemy = None
+        factor_list = ["factor "]
+        id_list = ["id "]
+        #help(self.state.units[0][0])
+        #for command in self.state.unitcommands
         for unit in self.state.units[0]:
             myself = unit
+            id_list.append(str(unit.command.targetId))
+            factor_list.append(str(unit.attacking))
         for unit in self.state.units[1]:
             enemy = unit
-
+        print (" ").join(factor_list)
+        print (" ").join(id_list)
         obs = np.zeros(self.observation_space.shape)
 
         if myself is not None and enemy is not None:
