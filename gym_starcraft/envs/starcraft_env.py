@@ -80,9 +80,9 @@ class StarCraftEnv(gym.Env):
         self.client.send(setup)
         #self.client.receive()
         self.state = self.client.recv()
-
         self.obs = self._make_observation()
         self.obs_pre = self.obs
+        self.data_reset()
         return self.obs
 
     def _action_space(self):
@@ -112,6 +112,10 @@ class StarCraftEnv(gym.Env):
     def _get_info(self):
         """Returns a dictionary contains debug info"""
         return {}
+
+    def data_reset(self):
+        pass
+
 
     def render(self, mode='human', close=False):
         pass
