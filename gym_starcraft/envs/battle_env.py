@@ -10,6 +10,7 @@ import starcraft_env as sc
 DISTANCE_FACTOR = 16
 MYSELF_NUM = 5.
 ENEMY_NUM = 5.
+DATA_NUM = 10
 
 # this data needs to be regularized
 # Not consider the air temporally
@@ -26,7 +27,9 @@ class data_unit(object):
         self.groundRange = unit.groundRange
         self.under_attack = unit.under_attack
         self.attacking = unit.attacking
+        self.moving = unit.moving
         #TODO maintain a TOP-K list
+        self.die = False
 
 
 
@@ -38,14 +41,20 @@ class data_unit(object):
         self.attackCD = unit.attackCD
         self.under_attack = unit.under_attack
         self.attacking = unit.attacking
+        self.moving = unit.moving
         if self.health <= 0: # die
-            return False
-        return True
+            self.die = True
 
     def extract_data(self):
         # type not included
-        return [self.x, self.y, self.health, self.shield, self.attackCD, self.groundATK, self.groundRange,
-                self.under_attack, self.attacking]
+        if self.die:
+            # still communicate but hope skip this one. ( convenient for experience store and replay )
+            # I am afraid there will be some memory leakage using the object.
+            return [0 for _ in range(DATA_NUM)]
+        data = [self.x, self.y, self.health, self.shield, self.attackCD, self.groundATK, self.groundRange,
+                self.under_attack, self.attacking, self.moving]
+        assert(len(data) == DATA_NUM)
+        return data
 
 class data_unit_dict(object):
     # Do not consider those died.
@@ -59,18 +68,20 @@ class data_unit_dict(object):
             self.id_mapping[unit.id] = i
             # use the idx to choose the input order | maybe not necessary
             self.units_dict[i] = data_unit(unit)
+        # in a fixed order
+        self.id_list = sorted(self.units_dict.keys())
 
     def update(self, units):
         for u in units:
             id = self.id_mapping[u.id]
-            alive = self.units_dict[id].update_date(u)
-            if not alive:
-                del(self.units_dict[id])
+            self.units_dict[id].update_date(u)
 
     def extract_data(self):
         data_list = []
-        for u in units:
-            data_list.append(u.extract_data())
+
+        for id in self.id_list:
+            # zero or useful information.
+            data_list.append(self.units_dict[id].extract_data())
         return np.array(data_list)
 
 
@@ -96,9 +107,9 @@ class SingleBattleEnv(sc.StarCraftEnv):
         # hit points, cooldown, ground range, is enemy, degree, distance (myself)
         # hit points, cooldown, ground range, is enemy (enemy)
         # obs_low = [0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-        obs_low = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-        #            x      y      health shield CD    ATK     range  under_attack
-        obs_high = [400.0, 300.0, 100.0, 100.0, 100.0, 100.0, 100.0, 1.0, 1.0]
+        obs_low = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        #            x      y      health shield CD    ATK     range  under_attack attacking moving
+        obs_high = [400.0, 300.0, 100.0, 100.0, 100.0, 100.0, 100.0, 1.0, 1.0, 1.0]
         # obs_high = [100.0, 100.0, 1.0, 1.0, 1.0, 50.0, 100.0, 100.0, 1.0, 1.0]
         return spaces.Box(np.array(obs_low), np.array(obs_high))
 
