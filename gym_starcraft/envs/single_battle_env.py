@@ -42,7 +42,7 @@ class SingleBattleEnv(sc.StarCraftEnv):
             myself = unit
             myself_id = unit.id
 
-	# ut means what in original code.
+# ut means what in original code.
 
         for unit in self.state.units[1]:
             enemy = unit
@@ -56,7 +56,6 @@ class SingleBattleEnv(sc.StarCraftEnv):
             # cmds.append(proto.concat_cmd(
             #     proto.commands['command_unit_protected'], myself_id,
             #     proto.unit_command_types['Attack_Unit'], enemy_id))
-            print "HHHHHHHHHHHHHHHHHHHHHHHHHHHHOLY SHIT", enemy_id
             cmds.append([tcc.command_unit_protected, myself_id, tcc.unitcommandtypes.Attack_Unit, enemy_id])
         else:
             # Move action
@@ -64,12 +63,11 @@ class SingleBattleEnv(sc.StarCraftEnv):
                 return cmds
             degree = action[1] * 180
             distance = (action[2] + 1) * DISTANCE_FACTOR
-            x2, y2 = utils.get_position(degree, distance, myself.x, myself.y)
+            x2, y2 = utils.get_position(degree, distance, myself.x, -myself.y)
             # cmds.append(proto.concat_cmd(
             #     proto.commands['command_unit_protected'], myself_id,
             #     proto.unit_command_types['Move'], -1, x2, -y2))
-            cmds.append([tcc.command_unit_protected, myself_id, tcc.unitcommandtypes.Move, -1, int(x2), int(y2)])
-        print cmds, "commands"
+            cmds.append([tcc.command_unit_protected, myself_id, tcc.unitcommandtypes.Move, -1, int(x2), int(-y2)])
         return cmds
 
     def _make_observation(self):

@@ -6,7 +6,7 @@ import torchcraft.Constants as tcc
 import gym_starcraft.utils as utils
 
 import starcraft_env as sc
-
+import math
 # used to draw the map
 import cv2
 
@@ -18,6 +18,16 @@ MAP_SIZE = 72.
 MYSELF_COLOR = 1
 NORMALIZE = False
 
+# the angle is defined from the north and clockwise
+# angle ranges from -1  to 1
+def compute_cos_value(unit_v1, v2):
+    # the product sum
+    v_product = np.sum(np.multiply(unit_v1, v2))
+    cos_value = v_product/np.linalg.norm(v2)
+    return cos_value
+
+# I considers that in this situation, the neural network will learn the mapping rather
+# than the relationship between positions and angles.
 
 # this data needs to be regularized
 # Not consider the air temporally
@@ -51,10 +61,11 @@ class data_unit(object):
         self.moving = unit.moving
         #TODO maintain a TOP-K list
         self.die = False
+        self.scale = 1.
 
 
     def update_data(self, unit):
-        self.health  unit.health
+        self.health = unit.health
         self.x = unit.x
         self.y = unit.y
         self.shield = unit.shield
@@ -64,7 +75,8 @@ class data_unit(object):
         self.moving = unit.moving
         if self.health <= 0: # die
             self.die = True
-        return (self.x - self.groundRange, self.y - self.groundRange, self.x + self.groundRange, self.y + self.groundRange)
+        return [self.x - self.groundRange, self.y - self.groundRange,
+                self.x + self.groundRange, self.y + self.groundRange]
 
     def extract_data(self):
         # type not included
@@ -72,7 +84,7 @@ class data_unit(object):
             # still communicate but hope skip this one. ( convenient for experience store and replay )
             # I am afraid there will be some memory leakage using the object.
             return [0 for _ in range(DATA_NUM)]
-        data = [self.x, self.y, self.health, self.shield, self.attackCD, self.groundATK, self.groundRange,
+        data = [self.x, self.y, self.health, self.shield, self.attackCD, self.groundATK, self.groundRange/self.scale,
                 self.under_attack, self.attacking, self.moving]
         assert(len(data) == DATA_NUM)
         return data
@@ -82,21 +94,27 @@ class data_unit_dict(object):
     def __init__(self, units, flag):
         self.units_dict = {}
         self.id_mapping = {}
+        self.id_reverse_mapping = {}
         # myself 0. enemy 1.
         self.flag = flag
         for i in range(len(units)):
             unit = units[i]
             self.id_mapping[unit.id] = i
+            self.id_reverse_mapping[i] = unit.id
             # use the idx to choose the input order | maybe not necessary
             self.units_dict[i] = data_unit(unit)
         # in a fixed order
         self.id_list = sorted(self.units_dict.keys())
+        print(self.id_list, "id list")
 
     def update(self, units):
-        map_cor = 10000, 10000, 0, 0
+        map_cor = [10000, 10000, 0, 0]
         for u in units:
             id = self.id_mapping[u.id]
-            extreme(self.units_dict[id].update_date(u), map_cor)
+            unit = self.units_dict[id]
+            if unit.die:
+                continue
+            map_cor = extreme(unit.update_data(u), map_cor)
         return map_cor
 
     def extract_data(self):
@@ -121,24 +139,54 @@ class data_unit_dict(object):
             if NORMALIZE:
                 unit.x = (unit.x - center[0])*2/range # [-1, 1]
                 unit.y = (unit.y - center[1])*2/range
+                unit.scale = scale
         return img
 
+    # unit is a foreign unit ( not in this dict )
+    def compute_closest_position(self, unit, angle):
+        # unit vector
+        theta = math.radians(angle * 180)
+        unit_v1 = np.array([math.cos(theta), math.sin(theta)])
+        target_id = self.compute_candidate(unit, unit_v1)
+        return target_id
 
-class SingleBattleEnv(sc.StarCraftEnv):
+    def compute_candidate(self, unit, unit_v1):
+        target_cos = -1
+        target_id = None
+        # not consider the same situation
+        for id in self.id_list:
+            if self.units_dict[id].die:
+                continue
+            # TODO if the value is normalized, pay attention to change the value here.
+            target_unit = self.units_dict[id]
+            v2 = np.array([target_unit.x - unit.x, target_unit.y - unit.y])
+            cos = compute_cos_value(unit_v1, v2)
+            if cos > target_cos:
+                target_cos = cos
+                target_id = self.id_reverse_mapping[id]
+        # None or the enemy
+        return target_id
+
+
+
+class MapBattleEnv(sc.StarCraftEnv):
     def __init__(self, server_ip, server_port, speed=0, frame_skip=0,
                  self_play=False, max_episode_steps=2000):
-        super(SingleBattleEnv, self).__init__(server_ip, server_port, speed,
+        super(MapBattleEnv, self).__init__(server_ip, server_port, speed,
                                               frame_skip, self_play,
                                               max_episode_steps)
         self.myself_health = None
         self.enemy_health = None
         self.delta_myself_health = 0
         self.delta_enemy_health = 0
+        self.unit_action_nb = 3
+        self.action_nb = 3 * MYSELF_NUM
 
+    # multiple actions.
     def _action_space(self):
         # attack or move, move_degree, move_distance
-        action_low = [-1.0, -1.0, -1.0]
-        action_high = [1.0, 1.0, 1.0]
+        action_low = [-1.0, -1.0, -1.0] * int(MYSELF_NUM)
+        action_high = [1.0, 1.0, 1.0] * int(MYSELF_NUM)
         return spaces.Box(np.array(action_low), np.array(action_high))
 
     def _observation_space(self):
@@ -155,40 +203,36 @@ class SingleBattleEnv(sc.StarCraftEnv):
         cmds = []
         if self.state is None or action is None:
             return cmds
-
-        myself_id = None
-        myself = None
-        enemy_id = None
-        enemy = None
-        for unit in self.state.units[0]:
-            myself = unit
-            myself_id = unit.id
-
-        # ut means what in original code.
-
-        for unit in self.state.units[1]:
-            enemy = unit
-            enemy_id = unit.id
-
-        if action[0] > 0:
-            # Attack action
-            if myself is None or enemy is None:
-                return cmds
-            # TODO: compute the enemy id based on its position
-            # cmds.append(proto.concat_cmd(
-            #     proto.commands['command_unit_protected'], myself_id,
-            #     proto.unit_command_types['Attack_Unit'], enemy_id))
-            cmds.append([tcc.command_unit_protected, myself_id, tcc.unitcommandtypes.Attack_Unit, enemy_id])
-        else:
-            # Move action
-            if myself is None or enemy is None:
-                return cmds
-            degree = action[1] * 180
-            distance = (action[2] + 1) * DISTANCE_FACTOR
-            x2, y2 = utils.get_position(degree, distance, myself.x, myself.y)
-            cmds.append([tcc.command_unit_protected, myself_id, tcc.unitcommandtypes.Move, -1, int(x2), int(y2)])
+        assert (len(action) == self.action_nb)
+        # 15 for 5 units
+        for i in range(0, MYSELF_NUM):
+            # Remember to mask the loss of these actions.
+            if self.myself_obs_dict[i].die:
+                continue
+            unit = self.myself_obs_dict[i]
+            unit_action = action[i*self.unit_action_nb, (i+1) * self.unit_action_nb]
+            cmds += self.take_action(unit_action, unit)
         return cmds
 
+    def take_action(self, action, unit):
+        # attack
+        cmds = []
+        if unit.id is None:
+            return cmds
+        if action[0] >= 0:
+            enemy_id = self.enemy_obs_dict.compute_closest_position(unit, action[1])
+            if enemy_id is None:
+                return cmds
+            # TODO: compute the enemy id based on its position ( I DON'T CARE THIS POINT )
+
+            cmds.append([tcc.command_unit_protected, unit.id, tcc.unitcommandtypes.Attack_Unit, enemy_id])
+        else:
+            # Move action
+            degree = action[1] * 180
+            distance = (action[2] + 1) * DISTANCE_FACTOR  # at most 2*DISTANCE_FACTOR
+            x2, y2 = utils.get_position2(degree, distance, unit.x, unit.y)
+            cmds.append([tcc.command_unit_protected, unit.id, tcc.unitcommandtypes.Move, -1, int(x2), int(y2)])
+        return cmds
 
     def _make_observation(self):
         # used to compute the rewards.
