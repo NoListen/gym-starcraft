@@ -13,7 +13,7 @@ import cv2
 DISTANCE_FACTOR = 16
 MYSELF_NUM = 5.
 ENEMY_NUM = 5.
-DATA_NUM = 10
+DATA_NUM = 11
 MAP_SIZE = 72.
 MYSELF_COLOR = 200
 NORMALIZE = False
@@ -96,7 +96,7 @@ class data_unit(object):
             # I am afraid there will be some memory leakage using the object.
             return [0 for _ in range(DATA_NUM)]
         data = [self.x, self.y, self.health, self.shield, self.attackCD, self.groundATK, self.groundRange/self.scale,
-                self.under_attack, self.attacking, self.moving]
+                self.under_attack, self.attacking, self.moving, 1.-self.die]
         assert(len(data) == DATA_NUM)
         return data
 
@@ -114,12 +114,14 @@ class data_unit_dict(object):
             self.units_dict[i] = data_unit(unit, unit.id)
         # in a fixed order
         self.id_list = sorted(self.units_dict.keys())
+        self.alive_num = -1
         print(self.id_list, "id list")
 
     def update(self, units):
         for id in self.id_list:
             self.units_dict[id].die = True
         map_cor = [10000, 10000, 0, 0]
+        self.alive_num = len(units)
         for u in units:
             id = self.id_mapping[u.id]
             unit = self.units_dict[id]
@@ -291,3 +293,8 @@ class MapBattleEnv(sc.StarCraftEnv):
         self.delta_enemy_health = 0
         self.myself_obs_dict = None
         self.enemy_obs_dict = None
+
+    def _check_done(self):
+        if self.myself_obs_dict.alive_num == 0 or self.enemy_obs_dict.alive_num == 0:
+            return True
+        return False
