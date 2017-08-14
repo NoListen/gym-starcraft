@@ -79,18 +79,18 @@ class StarCraftEnv(gym.Env):
 
 
         self.client.send(setup)
-        self.data_reset()
-
-        import time; time.sleep(1)
         self.state = self.client.recv()
+        
         print(len(self.state.units[1]), len(self.state.units[0]))
+        self.reset_data()
+
         self.obs = self._make_observation()
         self.obs_pre = self.obs
         return self.obs
 
-    def data_reset(self):
+    def reset_data(self):
         """Reset the state data"""
-        raise NotImplementedError
+        pass
 
     def _action_space(self):
         """Returns a space object"""

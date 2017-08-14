@@ -8,6 +8,8 @@ import gym_starcraft.utils as utils
 import starcraft_env as sc
 
 DISTANCE_FACTOR = 16
+MYSELF_NUM = 5
+ENEMY_NUM = 5
 
 class SingleBattleEnv(sc.StarCraftEnv):
     def __init__(self, server_ip, server_port, speed=0, frame_skip=0,
@@ -83,8 +85,8 @@ class SingleBattleEnv(sc.StarCraftEnv):
             factor_list.append(str(unit.attacking))
         for unit in self.state.units[1]:
             enemy = unit
-        print (" ").join(factor_list)
-        print (" ").join(id_list)
+        #print (" ").join(factor_list)
+        #print (" ").join(id_list)
         obs = np.zeros(self.observation_space.shape)
 
         if myself is not None and enemy is not None:
@@ -121,3 +123,11 @@ class SingleBattleEnv(sc.StarCraftEnv):
         if self.episode_steps == self.max_episode_steps:
             reward = -500
         return reward
+    
+    def reset_data(self):
+        while len(self.state.units[0]) != MYSELF_NUM or len(self.state.units[1]) != ENEMY_NUM:
+            #print("state has not been loaded completely", len(self.state.units[0]),len(self.state.units[1]))
+            self.client.send([])
+            self.state = self.client.recv()
+        #print("state loaded completely", len(self.state.units[0]),len(self.state.units[1]))
+

@@ -27,16 +27,17 @@ if __name__ == '__main__':
         os.mkdir("myself")
     if not os.path.exists("enemy"):
         os.mkdir("enemy")
-
-    while episodes < 50:
+    int_map_size = int(MAP_SIZE)
+    while episodes < 20:
         obs = env.reset()
         done = False
         while not done:
             action = agent.act()
             obs, reward, done, info = env.step(action)
             myself, enemy, imgs = obs
-            imsave("myself/myself_ep%i_step%i.png", imgs[0].reshape((MAP_SIZE, MAP_SIZE)))
-            imsave("enemy/enemy_ep%i_step%i.png", imgs[1].reshape((MAP_SIZE, MAP_SIZE)))
+            step += 1
+            imsave("myself/myself_ep%i_step%i.png" % (episodes, step), imgs[:,:,0].reshape((int_map_size, int_map_size)))
+            imsave("enemy/enemy_ep%i_step%i.png" % (episodes, step), imgs[:,:,1].reshape((int_map_size, int_map_size)))
         episodes += 1
         step = 0
     env.close()

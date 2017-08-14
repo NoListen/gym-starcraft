@@ -15,8 +15,16 @@ MYSELF_NUM = 5.
 ENEMY_NUM = 5.
 DATA_NUM = 10
 MAP_SIZE = 72.
-MYSELF_COLOR = 1
+MYSELF_COLOR = 200
 NORMALIZE = False
+
+
+def compute_totoal_health(units_list):
+    if len(units_list):
+        health = reduce(lambda x,y: x+y, [unit.health for unit in units_list])
+    else:
+        health = 0
+    return health
 
 # the angle is defined from the north and clockwise
 # angle ranges from -1  to 1
@@ -35,23 +43,26 @@ def extreme(cor, ext_cor):
     ext_cor[0] = min(ext_cor[0], cor[0])
     ext_cor[1] = min(ext_cor[1], cor[1])
     ext_cor[2] = max(ext_cor[2], cor[2])
-    ext_cor[3] = max(ext_cor[3], cor[3)
+    ext_cor[3] = max(ext_cor[3], cor[3])
     return ext_cor
 
 def resize_map(map_cor):
     center = (int((map_cor[0] + map_cor[2])/2.), int((map_cor[1] + map_cor[3])/2.))
     range  = max(map_cor[2]-map_cor[0], map_cor[3]-map_cor[1])
+#    print(range, map_cor)
     scale = range/MAP_SIZE #(I still want a circle rather than an oval)
 
     return center, range, scale
 
 class data_unit(object):
-    def __init__(self, unit):
+    def __init__(self, unit, id):
+        #print unit.groundRange, "Range"
+        self.id = id
         self.health = unit.health
         self.x = unit.x
         self.y = unit.y
         self.shield = unit.shield
-        self.attackCD = unit.attackCD
+        self.attackCD = unit.groundCD
         # the type is encoded to be one-hot, but is not considered temporally
         self.type = unit.type
         self.groundATK = unit.groundATK
@@ -69,12 +80,12 @@ class data_unit(object):
         self.x = unit.x
         self.y = unit.y
         self.shield = unit.shield
-        self.attackCD = unit.attackCD
+        self.attackCD = unit.groundCD
         self.under_attack = unit.under_attack
         self.attacking = unit.attacking
         self.moving = unit.moving
-        if self.health <= 0: # die
-            self.die = True
+        #if self.health <= 0: # die
+        self.die = False
         return [self.x - self.groundRange, self.y - self.groundRange,
                 self.x + self.groundRange, self.y + self.groundRange]
 
@@ -94,26 +105,24 @@ class data_unit_dict(object):
     def __init__(self, units, flag):
         self.units_dict = {}
         self.id_mapping = {}
-        self.id_reverse_mapping = {}
         # myself 0. enemy 1.
         self.flag = flag
         for i in range(len(units)):
             unit = units[i]
             self.id_mapping[unit.id] = i
-            self.id_reverse_mapping[i] = unit.id
             # use the idx to choose the input order | maybe not necessary
-            self.units_dict[i] = data_unit(unit)
+            self.units_dict[i] = data_unit(unit, unit.id)
         # in a fixed order
         self.id_list = sorted(self.units_dict.keys())
         print(self.id_list, "id list")
 
     def update(self, units):
+        for id in self.id_list:
+            self.units_dict[id].die = True
         map_cor = [10000, 10000, 0, 0]
         for u in units:
             id = self.id_mapping[u.id]
             unit = self.units_dict[id]
-            if unit.die:
-                continue
             map_cor = extreme(unit.update_data(u), map_cor)
         return map_cor
 
@@ -132,9 +141,9 @@ class data_unit_dict(object):
             if self.units_dict[id].die:
                 continue
             unit = self.units_dict[id]
-            radius = int(unit.radius/scale)
-            id_center = (int((unit.x - center[0])/scale), int((unit.y - center[1])/scale))
-            cv2.circle(img, id_center, radius, MYSELF_COLOR, -1) # changed to one at first.
+            radius = int(unit.groundRange/scale)
+            id_center = (int((unit.x - center[0])/scale + MAP_SIZE/2.), int((unit.y - center[1])/scale + MAP_SIZE/2.))
+            cv2.circle(img, id_center, radius, MYSELF_COLOR, 1) # changed to one at first.
 
             if NORMALIZE:
                 unit.x = (unit.x - center[0])*2/range # [-1, 1]
@@ -163,7 +172,7 @@ class data_unit_dict(object):
             cos = compute_cos_value(unit_v1, v2)
             if cos > target_cos:
                 target_cos = cos
-                target_id = self.id_reverse_mapping[id]
+                target_id = target_unit.id
         # None or the enemy
         return target_id
 
@@ -205,12 +214,12 @@ class MapBattleEnv(sc.StarCraftEnv):
             return cmds
         assert (len(action) == self.action_nb)
         # 15 for 5 units
-        for i in range(0, MYSELF_NUM):
+        for i in range(0, int(MYSELF_NUM)):
             # Remember to mask the loss of these actions.
-            if self.myself_obs_dict[i].die:
+            if self.myself_obs_dict.units_dict[i].die:
                 continue
-            unit = self.myself_obs_dict[i]
-            unit_action = action[i*self.unit_action_nb, (i+1) * self.unit_action_nb]
+            unit = self.myself_obs_dict.units_dict[i]
+            unit_action = action[i*self.unit_action_nb:(i+1) * self.unit_action_nb]
             cmds += self.take_action(unit_action, unit)
         return cmds
 
@@ -236,8 +245,8 @@ class MapBattleEnv(sc.StarCraftEnv):
 
     def _make_observation(self):
         # used to compute the rewards.
-        myself_health = reduce(lambda x,y: x+y, [unit.health for unit in self.state.units[0]])
-        enemy_health = reduce(lambda x,y: x+y, [unit.health for unit in self.state.units[1]])
+        myself_health = compute_totoal_health(self.state.units[0])
+        enemy_health = compute_totoal_health(self.state.units[1])
         self.delta_enemy_health = self.enemy_health - enemy_health
         self.delta_myself_health = self.myself_health - myself_health
         self.enemy_health = enemy_health
@@ -248,10 +257,11 @@ class MapBattleEnv(sc.StarCraftEnv):
 
         # I'd like to represent the distance in that hot map.
         if self.myself_obs_dict is None:
-            self.myself_obs_dict = data_unit_dict(self.state.units[0])
+            self.myself_obs_dict = data_unit_dict(self.state.units[0], 0)
 
+        # enemy's flag is one
         if self.enemy_obs_dict is None:
-            self.enemy_obs_dict = data_unit_dict(self.state.units[1])
+            self.enemy_obs_dict = data_unit_dict(self.state.units[1], 1)
 
         map_cor1 = self.myself_obs_dict.update(self.state.units[0])
         map_cor2 = self.enemy_obs_dict.update(self.state.units[1])
@@ -269,7 +279,12 @@ class MapBattleEnv(sc.StarCraftEnv):
         reward = self.delta_enemy_health/ENEMY_NUM - self.delta_myself_health/MYSELF_NUM
         return reward
 
-    def data_reset(self):
+    def reset_data(self):
+        while len(self.state.units[0]) != MYSELF_NUM or len(self.state.units[1]) != ENEMY_NUM:
+            #print("state has not been loaded completely", len(self.state.units[0]),len(self.state.units[1]))
+            self.client.send([])
+            self.state = self.client.recv()
+
         self.myself_health = MYSELF_NUM * 100
         self.enemy_health = ENEMY_NUM * 100
         self.delta_myself_health = 0

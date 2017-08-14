@@ -17,7 +17,7 @@ if __name__ == '__main__':
     parser.add_argument('--port', help='server port', type=int,default=11111)
     args = parser.parse_args()
 
-    env = sc.SingleBattleEnv(args.ip, args.port)
+    env = sc.SingleBattleEnv(args.ip, args.port, frame_skip=2)
     env.seed(123)
     agent = RandomAgent(env.action_space)
 

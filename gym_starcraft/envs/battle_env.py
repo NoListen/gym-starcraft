@@ -183,7 +183,12 @@ class SingleBattleEnv(sc.StarCraftEnv):
         reward = self.delta_enemy_health/ENEMY_NUM - self.delta_myself_health/MYSELF_NUM
         return reward
 
-    def data_reset(self):
+    def reset_data(self):
+        while len(self.state.units[0]) != MYSELF_NUM or len(self.state.units[1]) != ENEMY_NUM:
+            #print("state has not been loaded completely", len(self.state.units[0]),len(self.state.units[1]))
+            self.client.send([])
+            self.state = self.client.recv()
+
         self.myself_health = MYSELF_NUM * 100
         self.enemy_health = ENEMY_NUM * 100
         self.delta_myself_health = 0
