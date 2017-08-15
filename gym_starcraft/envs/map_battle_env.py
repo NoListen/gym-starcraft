@@ -194,7 +194,7 @@ class MapBattleEnv(sc.StarCraftEnv):
         self.delta_enemy_health = 0
         self.unit_action_nb = 3
         self.action_nb = 3 * int(MYSELF_NUM)
-        self.mask_shape = int(MYSELF_NUM)
+        self.mask_shape = (int(MYSELF_NUM),)
 
     # multiple actions.
     def _action_space(self):
