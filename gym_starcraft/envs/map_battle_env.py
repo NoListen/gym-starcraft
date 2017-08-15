@@ -206,9 +206,10 @@ class MapBattleEnv(sc.StarCraftEnv):
         # hit points, cooldown, ground range, is enemy, degree, distance (myself)
         # hit points, cooldown, ground range, is enemy (enemy)
         # obs_low = [0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-        obs_low = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        # TODO consider the enemy's data and the map
+        obs_low = [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] for _ in range(MYSELF_NUM)]
         #            x      y      health shield CD    ATK     range  under_attack attacking moving
-        obs_high = [400.0, 300.0, 100.0, 100.0, 100.0, 100.0, 100.0, 1.0, 1.0, 1.0]
+        obs_high = [[400.0, 300.0, 100.0, 100.0, 100.0, 100.0, 100.0, 1.0, 1.0, 1.0] for _ in range(MYSELF_NUM)]
         # obs_high = [100.0, 100.0, 1.0, 1.0, 1.0, 50.0, 100.0, 100.0, 1.0, 1.0]
         return spaces.Box(np.array(obs_low), np.array(obs_high))
 
