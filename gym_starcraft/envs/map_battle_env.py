@@ -13,7 +13,7 @@ import cv2
 DISTANCE_FACTOR = 16
 MYSELF_NUM = 5.
 ENEMY_NUM = 5.
-DATA_NUM = 11
+DATA_NUM = 10
 MAP_SIZE = 72.
 MYSELF_COLOR = 200
 NORMALIZE = False
@@ -96,9 +96,9 @@ class data_unit(object):
             # I am afraid there will be some memory leakage using the object.
             return [0 for _ in range(DATA_NUM)]
         data = [self.x, self.y, self.health, self.shield, self.attackCD, self.groundATK, self.groundRange/self.scale,
-                self.under_attack, self.attacking, self.moving, 1.-self.die]
+                self.under_attack, self.attacking, self.moving]
         assert(len(data) == DATA_NUM)
-        return data
+        return data, int(1-self.die)
 
 class data_unit_dict(object):
     # Do not consider those died.
@@ -130,11 +130,13 @@ class data_unit_dict(object):
 
     def extract_data(self):
         data_list = []
-
+        mask_list = []
         for id in self.id_list:
             # zero or useful information.
-            data_list.append(self.units_dict[id].extract_data())
-        return np.array(data_list)
+            data, mask = self.units_dict[id].extract_data()
+            mask_list.append(mask)
+            data_list.append(data)
+        return [np.array(data_list), np.array(mask)]
 
     def draw_maps(self, center, range, scale):
         map_size = int(MAP_SIZE)
@@ -273,6 +275,7 @@ class MapBattleEnv(sc.StarCraftEnv):
         map_myself = self.myself_obs_dict.draw_maps(center, range, scale)
         map_enemy = self.enemy_obs_dict.draw_maps(center, range, scale)
         map = np.concatenate([map_myself, map_enemy], axis=2)
+        # TODO normalzie the data in each unit corresponding to the map. PPPPPPPriority HIGH.
         return [self.myself_obs_dict.extract_data(), self.enemy_obs_dict.extract_data(), map]
 
     # return reward as a list.
