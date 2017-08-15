@@ -193,7 +193,8 @@ class MapBattleEnv(sc.StarCraftEnv):
         self.delta_myself_health = 0
         self.delta_enemy_health = 0
         self.unit_action_nb = 3
-        self.action_nb = 3 * MYSELF_NUM
+        self.action_nb = 3 * int(MYSELF_NUM)
+        self.mask_shape = int(MYSELF_NUM)
 
     # multiple actions.
     def _action_space(self):
@@ -201,6 +202,7 @@ class MapBattleEnv(sc.StarCraftEnv):
         action_low = [-1.0, -1.0, -1.0] * int(MYSELF_NUM)
         action_high = [1.0, 1.0, 1.0] * int(MYSELF_NUM)
         return spaces.Box(np.array(action_low), np.array(action_high))
+
 
     def _observation_space(self):
         # hit points, cooldown, ground range, is enemy, degree, distance (myself)
