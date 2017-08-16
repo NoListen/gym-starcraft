@@ -16,7 +16,7 @@ DATA_NUM = 10
 MAP_SIZE = 72.
 MYSELF_COLOR = 200
 NORMALIZE = False
-MAX_PEACE = 20
+MAX_RANGE = 100
 
 def compute_totoal_health(units_list):
     if len(units_list):
@@ -185,7 +185,7 @@ class data_unit_dict(object):
 
 class MapBattleEnv(sc.StarCraftEnv):
     def __init__(self, server_ip, server_port, speed=0, frame_skip=0,
-                 self_play=False, max_episode_steps=2000):
+                 self_play=False, max_episode_steps=1000):
         super(MapBattleEnv, self).__init__(server_ip, server_port, speed,
                                               frame_skip, self_play,
                                               max_episode_steps)
@@ -195,7 +195,7 @@ class MapBattleEnv(sc.StarCraftEnv):
         self.delta_enemy_health = 0
         self.nb_unit_actions = 3
         self.mask_shape = (int(MYSELF_NUM),)
-        self.peace_steps = 0
+        self.range = 0
 
     # multiple actions.
     def _action_space(self):
@@ -261,10 +261,6 @@ class MapBattleEnv(sc.StarCraftEnv):
         self.enemy_health = enemy_health
         self.myself_health = myself_health
         
-        if self.delta_enemy_health or self.delta_myself_health:
-            self.peace_steps = 0
-        else:
-            self.peace_steps += 1
         # the shape needs to be modified.
         # obs = np.zeros(self.observation_space.shape)
 
@@ -284,6 +280,7 @@ class MapBattleEnv(sc.StarCraftEnv):
         map_myself = self.myself_obs_dict.draw_maps(center, range, scale)
         map_enemy = self.enemy_obs_dict.draw_maps(center, range, scale)
         map = np.concatenate([map_myself, map_enemy], axis=2)
+        self.range = range
         # TODO normalzie the data in each unit corresponding to the map. PPPPPPPriority HIGH.
         return [self.myself_obs_dict.extract_data(), self.enemy_obs_dict.extract_data(), map]
 
@@ -294,11 +291,12 @@ class MapBattleEnv(sc.StarCraftEnv):
         return reward
 
     def reset_data(self):
-        while len(self.state.units[0]) != MYSELF_NUM or len(self.state.units[1]) != ENEMY_NUM:
+        while len(self.state.units) == 0 or len(self.state.units[0]) != MYSELF_NUM or len(self.state.units[1]) != ENEMY_NUM:
             #print("state has not been loaded completely", len(self.state.units[0]),len(self.state.units[1]))
+           
             self.client.send([])
             self.state = self.client.recv()
-
+        self.range = 0
         self.myself_health = MYSELF_NUM * 100
         self.enemy_health = ENEMY_NUM * 100
         self.delta_myself_health = 0
@@ -306,7 +304,18 @@ class MapBattleEnv(sc.StarCraftEnv):
         self.myself_obs_dict = None
         self.enemy_obs_dict = None
 
+        self.advanced_termination = True
+
+    def _check_win(self):
+        if self.myself_health/MYSELF_NUM >= self.enemy_health/ENEMY_NUM:
+            self.episode_wins += 1
+
     def _check_done(self):
-        if self.myself_obs_dict.alive_num == 0 or self.enemy_obs_dict.alive_num == 0 or self.peace_steps > MAX_PEACE:
+        if self.myself_obs_dict.alive_num == 0 or self.enemy_obs_dict.alive_num == 0:
+            self._check_win()
+            return True
+        if self.range > MAX_RANGE:# or self.peace_steps > MAX_PEACE:
+            self._check_win()
+            self.advanced_termination = True
             return True
         return False

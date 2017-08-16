@@ -30,6 +30,8 @@ class StarCraftEnv(gym.Env):
         self.obs = None
         self.obs_pre = None
 
+        self.advanced_termination =  False
+
     def __del__(self):
         self.client.close()
 
@@ -48,28 +50,29 @@ class StarCraftEnv(gym.Env):
         return self.obs, reward, done, info
 
     def _reset(self):
-        utils.print_progress(self.episodes, self.episode_wins)
+        #utils.print_progress(self.episodes, self.episode_wins)
 
-        if not self.self_play and self.episode_steps == self.max_episode_steps:
+        if (not self.self_play and self.episode_steps == self.max_episode_steps) or self.advanced_termination:
             # self.client.send([proto.concat_cmd(proto.commands['restart'])])
-            self.client.send([tcc.restart])
+            self.client.send([[tcc.restart]])
             #self.client.send([[tcc.set_map, 'Map/BroodWar/micro/2dragoons_5marines.scm',0],[tcc.restart]])
-            self.client.receive()
+            self.state = self.client.recv()
             while not bool(self.state.game_ended):
                 self.client.send([])
-                self.client.receive()
+                self.state = self.client.recv()
+
 
         self.episodes += 1
         self.episode_steps = 0
 
         self.client.close()
         self.client.connect(self.ip, self.port)
+        state = self.client.init(micro_battles=True)
         # setup = [proto.concat_cmd(proto.commands['set_speed'], self.speed),
         #          proto.concat_cmd(proto.commands['set_gui'], 1),
         #          proto.concat_cmd(proto.commands['set_frameskip'],
         #                           self.frame_skip),
         #          proto.concat_cmd(proto.commands['set_cmd_optim'], 1)]
-
         setup = [
             [tcc.set_speed, self.speed],
             [tcc.set_gui, 1],
@@ -80,7 +83,6 @@ class StarCraftEnv(gym.Env):
 
         self.client.send(setup)
         self.state = self.client.recv()
-        
         #/print(len(self.state.units[1]), len(self.state.units[0]))
         self.reset_data()
 
