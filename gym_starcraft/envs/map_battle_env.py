@@ -115,7 +115,7 @@ class data_unit_dict(object):
         # in a fixed order
         self.id_list = sorted(self.units_dict.keys())
         self.alive_num = -1
-        print(self.id_list, "id list")
+        #print(self.id_list, "id list")
 
     def update(self, units):
         for id in self.id_list:

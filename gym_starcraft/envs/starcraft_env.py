@@ -81,7 +81,7 @@ class StarCraftEnv(gym.Env):
         self.client.send(setup)
         self.state = self.client.recv()
         
-        print(len(self.state.units[1]), len(self.state.units[0]))
+        #/print(len(self.state.units[1]), len(self.state.units[0]))
         self.reset_data()
 
         self.obs = self._make_observation()
