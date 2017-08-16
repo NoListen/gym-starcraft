@@ -137,7 +137,7 @@ class data_unit_dict(object):
             data, mask = self.units_dict[id].extract_data()
             mask_list.append(mask)
             data_list.append(data)
-        return np.array(data_list), np.array(mask)
+        return np.array(data_list), np.array(mask_list)
 
     def draw_maps(self, center, range, scale):
         map_size = int(MAP_SIZE)
@@ -218,6 +218,8 @@ class MapBattleEnv(sc.StarCraftEnv):
 
     def _make_commands(self, action):
         cmds = []
+        assert(len(actions) == int(MYSELF_NUM))
+        assert(len(actions[0]) == self.unit_action_nb)
         if self.state is None or action is None:
             return cmds
         assert (len(action) == self.action_nb)
@@ -227,7 +229,7 @@ class MapBattleEnv(sc.StarCraftEnv):
             if self.myself_obs_dict.units_dict[i].die:
                 continue
             unit = self.myself_obs_dict.units_dict[i]
-            unit_action = action[i*self.unit_action_nb:(i+1) * self.unit_action_nb]
+            unit_action = action[i]
             cmds += self.take_action(unit_action, unit)
         return cmds
 
