@@ -17,7 +17,7 @@ MAP_SIZE = 72.
 MYSELF_COLOR = 200
 NORMALIZE = False
 MAX_RANGE = 100
-
+REWARD_SCALE = 20.
 def compute_totoal_health(units_list):
     if len(units_list):
         health = reduce(lambda x,y: x+y, [unit.health for unit in units_list])
@@ -288,6 +288,7 @@ class MapBattleEnv(sc.StarCraftEnv):
     # I need to know the range at first.
     def _compute_reward(self):
         reward = self.delta_enemy_health/ENEMY_NUM - self.delta_myself_health/MYSELF_NUM
+        reward = reward/REWARD_SCALE
         return reward
 
     def reset_data(self):
