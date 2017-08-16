@@ -16,7 +16,7 @@ DATA_NUM = 10
 MAP_SIZE = 72.
 MYSELF_COLOR = 200
 NORMALIZE = False
-
+MAX_PEACE = 20
 
 def compute_totoal_health(units_list):
     if len(units_list):
@@ -193,9 +193,9 @@ class MapBattleEnv(sc.StarCraftEnv):
         self.enemy_health = None
         self.delta_myself_health = 0
         self.delta_enemy_health = 0
-        self.unit_action_nb = 3
-        self.action_nb = 3 * int(MYSELF_NUM)
+        self.nb_unit_actions = 3
         self.mask_shape = (int(MYSELF_NUM),)
+        self.peace_steps = 0
 
     # multiple actions.
     def _action_space(self):
@@ -218,11 +218,10 @@ class MapBattleEnv(sc.StarCraftEnv):
 
     def _make_commands(self, action):
         cmds = []
-        assert(len(actions) == int(MYSELF_NUM))
-        assert(len(actions[0]) == self.unit_action_nb)
+        assert(len(action) == int(MYSELF_NUM))
+        assert(len(action[0]) == self.nb_unit_actions)
         if self.state is None or action is None:
             return cmds
-        assert (len(action) == self.action_nb)
         # 15 for 5 units
         for i in range(0, int(MYSELF_NUM)):
             # Remember to mask the loss of these actions.
@@ -261,7 +260,11 @@ class MapBattleEnv(sc.StarCraftEnv):
         self.delta_myself_health = self.myself_health - myself_health
         self.enemy_health = enemy_health
         self.myself_health = myself_health
-
+        
+        if self.delta_enemy_health or self.delta_myself_health:
+            self.peace_steps = 0
+        else:
+            self.peace_steps += 1
         # the shape needs to be modified.
         # obs = np.zeros(self.observation_space.shape)
 
@@ -304,6 +307,6 @@ class MapBattleEnv(sc.StarCraftEnv):
         self.enemy_obs_dict = None
 
     def _check_done(self):
-        if self.myself_obs_dict.alive_num == 0 or self.enemy_obs_dict.alive_num == 0:
+        if self.myself_obs_dict.alive_num == 0 or self.enemy_obs_dict.alive_num == 0 or self.peace_steps > MAX_PEACE:
             return True
         return False
