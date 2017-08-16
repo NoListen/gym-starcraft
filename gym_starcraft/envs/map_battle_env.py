@@ -4,8 +4,8 @@ from gym import spaces
 # from torchcraft_py import proto
 import torchcraft.Constants as tcc
 import gym_starcraft.utils as utils
-
-import starcraft_env as sc
+import gym_starcraft.envs.starcraft_env as sc
+#import starcraft_env as sc
 import math
 # used to draw the map
 import cv2
@@ -94,11 +94,11 @@ class data_unit(object):
         if self.die:
             # still communicate but hope skip this one. ( convenient for experience store and replay )
             # I am afraid there will be some memory leakage using the object.
-            return [0 for _ in range(DATA_NUM)]
+            return [0 for _ in range(DATA_NUM)], 0.
         data = [self.x, self.y, self.health, self.shield, self.attackCD, self.groundATK, self.groundRange/self.scale,
                 self.under_attack, self.attacking, self.moving]
         assert(len(data) == DATA_NUM)
-        return data, int(1-self.die)
+        return data, 1.
 
 class data_unit_dict(object):
     # Do not consider those died.
@@ -133,10 +133,12 @@ class data_unit_dict(object):
         mask_list = []
         for id in self.id_list:
             # zero or useful information.
+            #return_stuff = self.units_dict[id].extract_data()
+            #print(type(return_stuff), len(return_stuff))
             data, mask = self.units_dict[id].extract_data()
             mask_list.append(mask)
             data_list.append(data)
-        return [np.array(data_list), np.array(mask)]
+        return np.array(data_list), np.array(mask)
 
     def draw_maps(self, center, range, scale):
         map_size = int(MAP_SIZE)
@@ -209,9 +211,9 @@ class MapBattleEnv(sc.StarCraftEnv):
         # hit points, cooldown, ground range, is enemy (enemy)
         # obs_low = [0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         # TODO consider the enemy's data and the map
-        obs_low = [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] for _ in range(MYSELF_NUM)]
+        obs_low = [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] for _ in range(int(MYSELF_NUM))]
         #            x      y      health shield CD    ATK     range  under_attack attacking moving
-        obs_high = [[400.0, 300.0, 100.0, 100.0, 100.0, 100.0, 100.0, 1.0, 1.0, 1.0] for _ in range(MYSELF_NUM)]
+        obs_high = [[400.0, 300.0, 100.0, 100.0, 100.0, 100.0, 100.0, 1.0, 1.0, 1.0] for _ in range(int(MYSELF_NUM))]
         # obs_high = [100.0, 100.0, 1.0, 1.0, 1.0, 50.0, 100.0, 100.0, 1.0, 1.0]
         return spaces.Box(np.array(obs_low), np.array(obs_high))
 

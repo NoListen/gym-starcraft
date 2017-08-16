@@ -4,8 +4,8 @@ from gym import spaces
 # from torchcraft_py import proto
 import torchcraft.Constants as tcc
 import gym_starcraft.utils as utils
-
-import starcraft_env as sc
+import gym_starcraft.envs.starcraft_env as sc
+#import starcraft_env as sc
 
 DISTANCE_FACTOR = 16
 MYSELF_NUM = 5
