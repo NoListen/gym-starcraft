@@ -22,5 +22,5 @@ def get_position2(degree, distance, x1, y1):
 
 
 def print_progress(episodes, wins):
-    print "Episodes: %4d | Wins: %4d | WinRate: %1.3f" % (
-        episodes, wins, wins / (episodes + 1E-6))
+    print("Episodes: %4d | Wins: %4d | WinRate: %1.3f" % (
+        episodes, wins, wins / (episodes + 1E-6)))
