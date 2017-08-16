@@ -5,7 +5,6 @@ from gym import spaces
 import torchcraft.Constants as tcc
 import gym_starcraft.utils as utils
 import gym_starcraft.envs.starcraft_env as sc
-#import starcraft_env as sc
 import math
 # used to draw the map
 import cv2
@@ -201,8 +200,8 @@ class MapBattleEnv(sc.StarCraftEnv):
     # multiple actions.
     def _action_space(self):
         # attack or move, move_degree, move_distance
-        action_low = [-1.0, -1.0, -1.0] * int(MYSELF_NUM)
-        action_high = [1.0, 1.0, 1.0] * int(MYSELF_NUM)
+        action_low = [[-1.0, -1.0, -1.0] for _ in range(int(MYSELF_NUM))]
+        action_high = [[1.0, 1.0, 1.0] for _ in range(int(MYSELF_NUM))]
         return spaces.Box(np.array(action_low), np.array(action_high))
 
 
