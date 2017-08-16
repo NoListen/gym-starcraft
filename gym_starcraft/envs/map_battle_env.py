@@ -287,6 +287,8 @@ class MapBattleEnv(sc.StarCraftEnv):
     # return reward as a list.
     # I need to know the range at first.
     def _compute_reward(self):
+        if self.range > MAX_RANGE or self.episode_steps == self.max_episode_steps:
+            return -5
         reward = self.delta_enemy_health/ENEMY_NUM - self.delta_myself_health/MYSELF_NUM
         reward = reward/REWARD_SCALE
         return reward
