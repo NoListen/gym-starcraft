@@ -36,6 +36,7 @@ if __name__ == '__main__':
             obs, reward, done, info = env.step(action)
             myself, enemy, imgs = obs
             step += 1
+            print(myself[0], "ep%i_step%i" %(episodes, step))
             imsave("myself/myself_ep%i_step%i.png" % (episodes, step), imgs[:,:,0].reshape((int_map_size, int_map_size)))
             imsave("enemy/enemy_ep%i_step%i.png" % (episodes, step), imgs[:,:,1].reshape((int_map_size, int_map_size)))
         episodes += 1

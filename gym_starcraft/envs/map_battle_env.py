@@ -15,9 +15,12 @@ ENEMY_NUM = 5.
 DATA_NUM = 10
 MAP_SIZE = 72.
 MYSELF_COLOR = 200
-NORMALIZE = False
+NORMALIZE = True
+#NORMALIZE = False
 MAX_RANGE = 100
-REWARD_SCALE = 20.
+HEALTH_SCALE = 20.
+TIME_SCALE = 10.
+
 def compute_totoal_health(units_list):
     if len(units_list):
         health = reduce(lambda x,y: x+y, [unit.health for unit in units_list])
@@ -88,14 +91,21 @@ class data_unit(object):
         return [self.x - self.groundRange, self.y - self.groundRange,
                 self.x + self.groundRange, self.y + self.groundRange]
 
-    def extract_data(self):
+    def extract_data(self, center=None, range=None, scale=None):
         # type not included
         if self.die:
             # still communicate but hope skip this one. ( convenient for experience store and replay )
             # I am afraid there will be some memory leakage using the object.
-            return [0 for _ in range(DATA_NUM)], 0.
-        data = [self.x, self.y, self.health, self.shield, self.attackCD, self.groundATK, self.groundRange/self.scale,
-                self.under_attack, self.attacking, self.moving]
+            return [0 for _ in xrange(int(DATA_NUM))], 0.
+
+
+
+        if center != None and range != None and scale != None:
+            data = [(self.x - center[0])*2./range, (self.y - center[1])*2./range, self.health/HEALTH_SCALE, self.shield/HEALTH_SCALE, self.attackCD/TIME_SCALE, self.groundATK/HEALTH_SCALE, 
+                    self.groundRange*2./range, self.under_attack, self.attacking, self.moving]
+        else:
+            data = [self.x, self.y, self.health/HEALTH_SCALE, self.shield/HEALTH_SCALE, self.attackCD/TIME_SCALE, self.groundATK/HEALTH_SCALE, self.groundRange,
+                    self.under_attack, self.attacking, self.moving]
         assert(len(data) == DATA_NUM)
         return data, 1.
 
@@ -127,14 +137,16 @@ class data_unit_dict(object):
             map_cor = extreme(unit.update_data(u), map_cor)
         return map_cor
 
-    def extract_data(self):
+    def extract_data(self, center=None, range=None, scale=None):
         data_list = []
         mask_list = []
         for id in self.id_list:
             # zero or useful information.
             #return_stuff = self.units_dict[id].extract_data()
             #print(type(return_stuff), len(return_stuff))
-            data, mask = self.units_dict[id].extract_data()
+
+            # range can be inferred from scale and MAP_SIZE.
+            data, mask = self.units_dict[id].extract_data(center, range, scale)
             mask_list.append(mask)
             data_list.append(data)
         return np.array(data_list), np.array(mask_list)
@@ -150,10 +162,10 @@ class data_unit_dict(object):
             id_center = (int((unit.x - center[0])/scale + MAP_SIZE/2.), int((unit.y - center[1])/scale + MAP_SIZE/2.))
             cv2.circle(img, id_center, radius, MYSELF_COLOR, 1) # changed to one at first.
 
-            if NORMALIZE:
-                unit.x = (unit.x - center[0])*2/range # [-1, 1]
-                unit.y = (unit.y - center[1])*2/range
-                unit.scale = scale
+            #if NORMALIZE:
+            #    unit.x = (unit.x - center[0])*2/range # [-1, 1]
+            #    unit.y = (unit.y - center[1])*2/range
+            #    unit.scale = scale
         return img
 
     # unit is a foreign unit ( not in this dict )
@@ -282,7 +294,10 @@ class MapBattleEnv(sc.StarCraftEnv):
         map = np.concatenate([map_myself, map_enemy], axis=2)
         self.range = range
         # TODO normalzie the data in each unit corresponding to the map. PPPPPPPriority HIGH.
-        return [self.myself_obs_dict.extract_data(), self.enemy_obs_dict.extract_data(), map]
+        if NORMALIZE:
+            return [self.myself_obs_dict.extract_data(center, range, scale), self.enemy_obs_dict.extract_data(center, range, scale), map]
+        else:
+            return [self.myself_obs_dict.extract_data(), self.enemy_obs_dict.extract_data(), map]
 
     # return reward as a list.
     # I need to know the range at first.
@@ -290,7 +305,7 @@ class MapBattleEnv(sc.StarCraftEnv):
         if self.range > MAX_RANGE or self.episode_steps == self.max_episode_steps:
             return -5
         reward = self.delta_enemy_health/ENEMY_NUM - self.delta_myself_health/MYSELF_NUM
-        reward = reward/REWARD_SCALE
+        reward = reward/HEALTH_SCALE
         return reward
 
     def reset_data(self):
