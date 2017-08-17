@@ -15,8 +15,8 @@ ENEMY_NUM = 5.
 DATA_NUM = 10
 MAP_SIZE = 72.
 MYSELF_COLOR = 200
-NORMALIZE = True
-#NORMALIZE = False
+#NORMALIZE = True
+NORMALIZE = False
 MAX_RANGE = 100
 HEALTH_SCALE = 20.
 TIME_SCALE = 10.
@@ -96,7 +96,7 @@ class data_unit(object):
         if self.die:
             # still communicate but hope skip this one. ( convenient for experience store and replay )
             # I am afraid there will be some memory leakage using the object.
-            return [0 for _ in xrange(int(DATA_NUM))], 0.
+            return [0]*DATA_NUM, 0.
 
 
 
