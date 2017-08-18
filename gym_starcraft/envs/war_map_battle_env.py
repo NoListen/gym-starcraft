@@ -13,13 +13,48 @@ DISTANCE_FACTOR = 16
 MYSELF_NUM = 5.
 ENEMY_NUM = 5.
 DATA_NUM = 10
-MAP_SIZE = 72.
+MAP_SIZE = 48.
 MYSELF_COLOR = 200
 #NORMALIZE = True
 NORMALIZE = False
 MAX_RANGE = 100
 HEALTH_SCALE = 20.
 TIME_SCALE = 10.
+
+# 96 by 96
+# static map at first
+CROP_LT = (80, 80)
+CROP_RB = (176, 176)
+# times relative to the map
+SCALE = max(CROP_RB[1] - CROP_LT[1], CROP_RB[0] - CROP_LT[0])/MAP_SIZE
+
+# The range is kind of cheating.
+# So data had better only include 1.health channel 3
+#  2.shield, 3
+# 3. enemy (flag). or player 3
+# 4. type 3
+# 5. Where is myself. 1
+
+# one image with 13 channels.
+# TODO: How one AI robot learns to learn his enemy, by something like transferring the viewpoints.
+def pixel_coordinates(unit):
+    x0 = unit.x - unit.pixel_size_x/2. - CROP_LT[0]
+    y0 = unit.y - unit.pixel_size_y/2. - CROP_LT[1]
+    x1 = x0 + unit.pixel_size_x
+    y1 = y0 + unit.pixel_size_y
+    return (x0/SCALE, y0/SCALE), (x1/SCALE, y1/SCALE)
+
+
+def get_map(type, unit_dict_list):
+    if type != "unit_location":
+        map = np.zeros((int(MAP_SIZE), int(MAP_SIZE), 3), dtyp=np.uint8)
+    else:
+        map = np.zeros((int(MAP_SIZE), int(MAP_SIZE)), dtype=np.uint8)
+    # pass the map one to one
+    for dic in unit_dict_list:
+        map = dic.get_map(type, map)
+    return map
+
 
 
 def compute_totoal_health(units_list):
@@ -69,13 +104,15 @@ class data_unit(object):
         # the type is encoded to be one-hot, but is not considered temporally
         self.type = unit.type
         self.groundATK = unit.groundATK
-        self.groundRange = unit.groundRange
+        self.groundRange = unit.groundRange # this can be inferred from training
         self.under_attack = unit.under_attack
         self.attacking = unit.attacking
         self.moving = unit.moving
         #TODO maintain a TOP-K list
         self.die = False
         self.scale = 1.
+        self.max_health = unit.max_health
+        self.max_shield = unit.max_shield
 
 
     def update_data(self, unit):
@@ -152,22 +189,35 @@ class data_unit_dict(object):
             data_list.append(data)
         return np.array(data_list), np.array(mask_list)
 
-    def draw_maps(self, center, range, scale):
-        map_size = int(MAP_SIZE)
-        img = np.zeros((map_size, map_size,1), dtype=np.uint8)
+    def get_map(self, type, map):
+        #well, if the map is "unit_location", the color is only one.
         for id in self.id_list:
             if self.units_dict[id].die:
                 continue
             unit = self.units_dict[id]
-            radius = int(unit.groundRange/scale)
-            id_center = (int((unit.x - center[0])/scale + MAP_SIZE/2.), int((unit.y - center[1])/scale + MAP_SIZE/2.))
-            cv2.circle(img, id_center, radius, MYSELF_COLOR, 1) # changed to one at first.
-
-            #if NORMALIZE:
-            #    unit.x = (unit.x - center[0])*2/range # [-1, 1]
-            #    unit.y = (unit.y - center[1])*2/range
-            #    unit.scale = scale
-        return img
+            p1,p2 = pixel_coordinates(unit)
+            # well , the relationship between the scale of the convolution input need to be considered again.
+            if type=="unit_location":
+                # maybe 128 can be better.
+                cv2.rectangle(map, p1, p2, 1, -1)
+            elif type=="health":
+                if unit.max_health:
+                    # I think rgb allows more complicated operations
+                    color = utils.hsv_to_rgb(unit.health * 120./unit.max_health, 100, 100)
+                    cv2.rectangle(map, p1, p2, color, -1)
+            elif type=="shield":
+                if unit.max_shield:
+                    color = utils.hsv_to_rgb(unit.max_shield * 120./unit.max_shield, 100, 100)
+                    cv2.rectangle(map, p1, p2, color, -1)
+            elif type=="type":
+                color = utils.html_color_table[unit.type]
+                cv2.rectangle(map, p1, p2, color, -1)
+            elif type=="flag":
+                color = utils.players_color_table[self.flag]
+                cv2.rectangle(map , p1, p2, color, -1)
+            else:
+                print("Sorry, the type required can't be satisfied")
+        return map
 
     # unit is a foreign unit ( not in this dict )
     def compute_closest_position(self, unit, angle):
