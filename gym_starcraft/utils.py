@@ -183,3 +183,11 @@ html_color_table = [
     [255,255,224],  # light yellow
     [139,69,19]     # saddle brownH
 ]
+
+map_channels_table = {
+    "unit_location": 1,
+    "health": 3,
+    "shield": 3,
+    "type": 3,
+    "flag": 3
+}

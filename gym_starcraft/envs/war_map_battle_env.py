@@ -10,8 +10,8 @@ import math
 import cv2
 
 DISTANCE_FACTOR = 16
-MYSELF_NUM = 5.
-ENEMY_NUM = 5.
+MYSELF_NUM = 5
+ENEMY_NUM = 5
 DATA_NUM = 10
 MAP_SIZE = 48.
 MYSELF_COLOR = 200
@@ -26,7 +26,7 @@ TIME_SCALE = 10.
 CROP_LT = (80, 80)
 CROP_RB = (176, 176)
 # times relative to the map
-SCALE = max(CROP_RB[1] - CROP_LT[1], CROP_RB[0] - CROP_LT[0])/MAP_SIZE
+SCALE = (max(CROP_RB[1] - CROP_LT[1], CROP_RB[0] - CROP_LT[0])+0.)/MAP_SIZE
 
 # The range is kind of cheating.
 # So data had better only include 1.health channel 3
@@ -45,14 +45,15 @@ def pixel_coordinates(unit):
     return (x0/SCALE, y0/SCALE), (x1/SCALE, y1/SCALE)
 
 
-def get_map(type, unit_dict_list):
+def get_map(map_type, unit_dict_list):
     if type != "unit_location":
-        map = np.zeros((int(MAP_SIZE), int(MAP_SIZE), 3), dtyp=np.uint8)
+        map = np.zeros((MAP_SIZE, MAP_SIZE, 3), dtyp=np.uint8)
     else:
-        map = np.zeros((int(MAP_SIZE), int(MAP_SIZE)), dtype=np.uint8)
+        # EASY FOR concatenate
+        map = np.zeros((MAP_SIZE, MAP_SIZE, MYSELF_NUM), dtype=np.uint8)
     # pass the map one to one
-    for dic in unit_dict_list:
-        map = dic.get_map(type, map)
+    for dict in unit_dict_list:
+        map = dict.get_map(map_type, map)
     return map
 
 
@@ -88,7 +89,7 @@ def resize_map(map_cor):
     center = (int((map_cor[0] + map_cor[2])/2.), int((map_cor[1] + map_cor[3])/2.))
     range  = max(map_cor[2]-map_cor[0], map_cor[3]-map_cor[1])
 #    print(range, map_cor)
-    scale = range/MAP_SIZE #(I still want a circle rather than an oval)
+    scale = (range+0.)/MAP_SIZE #(I still want a circle rather than an oval)
 
     return center, range, scale
 
@@ -110,7 +111,6 @@ class data_unit(object):
         self.moving = unit.moving
         #TODO maintain a TOP-K list
         self.die = False
-        self.scale = 1.
         self.max_health = unit.max_health
         self.max_shield = unit.max_shield
 
@@ -146,6 +146,11 @@ class data_unit(object):
                     self.under_attack, self.attacking, self.moving]
         assert(len(data) == DATA_NUM)
         return data, 1.
+
+    def extract_mask(self):
+        if self.die:
+            return 0.
+        return 1.
 
 class data_unit_dict(object):
     # Do not consider those died.
@@ -189,30 +194,40 @@ class data_unit_dict(object):
             data_list.append(data)
         return np.array(data_list), np.array(mask_list)
 
-    def get_map(self, type, map):
-        #well, if the map is "unit_location", the color is only one.
+
+    def extract_mask(self):
+        mask_list = []
         for id in self.id_list:
+            mask = self.units_dict[id].extract_mask()
+            mask_list.append(mask)
+        return np.array(mask_list)   
+
+    def get_map(self, map_type, map):
+        #well, if the map is "unit_location", the color is only one.
+        id_index = 0 
+        for id in self.id_list:
+            id_index += 1
             if self.units_dict[id].die:
                 continue
             unit = self.units_dict[id]
             p1,p2 = pixel_coordinates(unit)
             # well , the relationship between the scale of the convolution input need to be considered again.
-            if type=="unit_location":
+            if map_type=="unit_location":
                 # maybe 128 can be better.
-                cv2.rectangle(map, p1, p2, 1, -1)
-            elif type=="health":
+                cv2.rectangle(map[..., id_index], p1, p2, 1, -1)
+            elif map_type=="health":
                 if unit.max_health:
                     # I think rgb allows more complicated operations
                     color = utils.hsv_to_rgb(unit.health * 120./unit.max_health, 100, 100)
                     cv2.rectangle(map, p1, p2, color, -1)
-            elif type=="shield":
+            elif map_type=="shield":
                 if unit.max_shield:
                     color = utils.hsv_to_rgb(unit.max_shield * 120./unit.max_shield, 100, 100)
                     cv2.rectangle(map, p1, p2, color, -1)
-            elif type=="type":
+            elif map_type=="type":
                 color = utils.html_color_table[unit.type]
                 cv2.rectangle(map, p1, p2, color, -1)
-            elif type=="flag":
+            elif map_type=="flag":
                 color = utils.players_color_table[self.flag]
                 cv2.rectangle(map , p1, p2, color, -1)
             else:
@@ -257,36 +272,42 @@ class MapBattleEnv(sc.StarCraftEnv):
         self.delta_myself_health = 0
         self.delta_enemy_health = 0
         self.nb_unit_actions = 3
-        self.mask_shape = (int(MYSELF_NUM),)
+        self.mask_shape = (MYSELF_NUM,)
         self.range = 0
+        self.map_types_table = ["unit_location", "health", "shield", "type", "flag"]
 
     # multiple actions.
     def _action_space(self):
         # attack or move, move_degree, move_distance
-        action_low = [[-1.0, -1.0, -1.0] for _ in range(int(MYSELF_NUM))]
-        action_high = [[1.0, 1.0, 1.0] for _ in range(int(MYSELF_NUM))]
+        action_low = [[-1.0, -1.0, -1.0] for _ in range(MYSELF_NUM)]
+        action_high = [[1.0, 1.0, 1.0] for _ in range(MYSELF_NUM)]
         return spaces.Box(np.array(action_low), np.array(action_high))
 
 
     def _observation_space(self):
-        # hit points, cooldown, ground range, is enemy, degree, distance (myself)
-        # hit points, cooldown, ground range, is enemy (enemy)
-        # obs_low = [0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-        # TODO consider the enemy's data and the map
-        obs_low = [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] for _ in range(int(MYSELF_NUM))]
-        #            x      y      health shield CD    ATK     range  under_attack attacking moving
-        obs_high = [[400.0, 300.0, 100.0, 100.0, 100.0, 100.0, 100.0, 1.0, 1.0, 1.0] for _ in range(int(MYSELF_NUM))]
-        # obs_high = [100.0, 100.0, 1.0, 1.0, 1.0, 50.0, 100.0, 100.0, 1.0, 1.0]
+        # I am afraid I can't use spaces.Box to describe my observations clearluy.
+        # the map should  included 1. map 2. unit location 3. unit mask
+        # just compute for the map only.
+        # mask and unit_locationb would be seperately returned.
+
+        #unit_location_obs_low = np.tile(np.zeros((MAP_SIZE, MAP_SIZE, 1), dtype=np.uint8), (0, 0, MYSELF_NUM))
+        #unit_location_obs_high = np.tile(np.ones((MAP_SIZE, MAP_SIZE, 1), dtype=np.uint8), (0, 0, MYSELF_NUM))
+        map_channels = reduce(lambda x,y: x+y, [utils.map_channels_table[mt] for mt in self.map_types_table if mt != 'unit_location'])
+        print("All maps occupies %i channels" % map_channels)
+        obs_low = np.zeros((MAP_SIZE, MAP_SIZE, map_channels), dtype = np.uint8)
+        obs_high = other_map_low + 255)
+        #obs_low = np.concatenate([unit_location_obs_low, other_map_low], axis=2)
+        #obs_high = np.concatenate(unit_location_obs_high, other_map_high), axis=2)
         return spaces.Box(np.array(obs_low), np.array(obs_high))
 
     def _make_commands(self, action):
         cmds = []
-        assert(len(action) == int(MYSELF_NUM))
+        assert(len(action) == MYSELF_NUM)
         assert(len(action[0]) == self.nb_unit_actions)
         if self.state is None or action is None:
             return cmds
         # 15 for 5 units
-        for i in range(0, int(MYSELF_NUM)):
+        for i in range(0, MYSELF_NUM):
             # Remember to mask the loss of these actions.
             if self.myself_obs_dict.units_dict[i].die:
                 continue
@@ -340,22 +361,27 @@ class MapBattleEnv(sc.StarCraftEnv):
         map_cor = extreme(map_cor1, map_cor2)
         center, range, scale = resize_map(map_cor)
 
-        map_myself = self.myself_obs_dict.draw_maps(center, range, scale)
-        map_enemy = self.enemy_obs_dict.draw_maps(center, range, scale)
-        map = np.concatenate([map_myself, map_enemy], axis=2)
+        assert("unit_location" in self.map_types_table)
+        unit_dict_list = [self.myself_obs_dict, self.enemy_obs_dict]
+        unit_locations = get_map('unit_location', unit_dict_list) # 1
+        maps = []
+        for mt in self.map_types_table:
+            maps.append(get_map(mt, unit_dict_list))
+        total_maps = np.concatenate(map, axis=2) # 2
+        
+        #map_myself = self.myself_obs_dict.draw_maps(center, range, scale)
+        #map_enemy = self.enemy_obs_dict.draw_maps(center, range, scale)
+        #map = np.concatenate([map_myself, map_enemy], axis=2)
         self.range = range
         # TODO normalzie the data in each unit corresponding to the map. PPPPPPPriority HIGH.
-        if NORMALIZE:
-            return [self.myself_obs_dict.extract_data(center, range, scale), self.enemy_obs_dict.extract_data(center, range, scale), map]
-        else:
-            return [self.myself_obs_dict.extract_data(), self.enemy_obs_dict.extract_data(), map]
+        return [unit_locations, total_maps, self.myself_obs_dict.extract_mask()]
 
     # return reward as a list.
     # I need to know the range at first.
     def _compute_reward(self):
         if self.range > MAX_RANGE or self.episode_steps == self.max_episode_steps:
             return -5
-        reward = self.delta_enemy_health/ENEMY_NUM - self.delta_myself_health/MYSELF_NUM
+        reward = self.delta_enemy_health/float(ENEMY_NUM) - self.delta_myself_health/float(MYSELF_NUM)
         reward = reward/HEALTH_SCALE
         return reward
 
@@ -366,8 +392,8 @@ class MapBattleEnv(sc.StarCraftEnv):
             self.client.send([])
             self.state = self.client.recv()
         self.range = 0
-        self.myself_health = MYSELF_NUM * 100
-        self.enemy_health = ENEMY_NUM * 100
+        self.myself_health = MYSELF_NUM * 100.
+        self.enemy_health = ENEMY_NUM * 100.
         self.delta_myself_health = 0
         self.delta_enemy_health = 0
         self.myself_obs_dict = None
@@ -376,7 +402,7 @@ class MapBattleEnv(sc.StarCraftEnv):
         self.advanced_termination = True
 
     def _check_win(self):
-        if self.myself_health/MYSELF_NUM >= self.enemy_health/ENEMY_NUM:
+        if self.myself_health/float(MYSELF_NUM) >= self.enemy_health/float(ENEMY_NUM):
             self.episode_wins += 1
 
     def _check_done(self):
