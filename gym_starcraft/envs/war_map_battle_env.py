@@ -13,7 +13,7 @@ DISTANCE_FACTOR = 16
 MYSELF_NUM = 5
 ENEMY_NUM = 5
 DATA_NUM = 10
-MAP_SIZE = 48.
+MAP_SIZE = 40
 MYSELF_COLOR = 200
 #NORMALIZE = True
 NORMALIZE = False
@@ -23,11 +23,10 @@ TIME_SCALE = 10.
 
 # 96 by 96
 # static map at first
-CROP_LT = (80, 80)
-CROP_RB = (176, 176)
+CROP_LT = (60, 100)
+CROP_RB = (140, 180)
 # times relative to the map
-SCALE = (max(CROP_RB[1] - CROP_LT[1], CROP_RB[0] - CROP_LT[0])+0.)/MAP_SIZE
-
+SCALE = (max(CROP_RB[1] - CROP_LT[1], CROP_RB[0] - CROP_LT[0]))/float(MAP_SIZE)
 # The range is kind of cheating.
 # So data had better only include 1.health channel 3
 #  2.shield, 3
@@ -38,22 +37,27 @@ SCALE = (max(CROP_RB[1] - CROP_LT[1], CROP_RB[0] - CROP_LT[0])+0.)/MAP_SIZE
 # one image with 13 channels.
 # TODO: How one AI robot learns to learn his enemy, by something like transferring the viewpoints.
 def pixel_coordinates(unit):
-    x0 = unit.x - unit.pixel_size_x/2. - CROP_LT[0]
-    y0 = unit.y - unit.pixel_size_y/2. - CROP_LT[1]
-    x1 = x0 + unit.pixel_size_x
-    y1 = y0 + unit.pixel_size_y
-    return (x0/SCALE, y0/SCALE), (x1/SCALE, y1/SCALE)
+    x0 = unit.x - unit.pixel_size_x/10. - CROP_LT[0]
+    y0 = unit.y - unit.pixel_size_y/10. - CROP_LT[1]
+    x1 = x0 + unit.pixel_size_x/5.
+    y1 = y0 + unit.pixel_size_y/5.
+    return (int(x0/SCALE), int(y0/SCALE)), (int(x1/SCALE), int(y1/SCALE))
 
 
 def get_map(map_type, unit_dict_list):
-    if type != "unit_location":
-        map = np.zeros((MAP_SIZE, MAP_SIZE, 3), dtyp=np.uint8)
+    # unit locations need to be drawed into different maps.
+    if map_type == "unit_location":
+        unit_num = reduce(lambda x,y: x+y, [d.num for d in unit_dict_list])
+        map = [np.zeros((MAP_SIZE, MAP_SIZE, 1), dtype=np.uint8) for _ in range(unit_num)]
+        for d in unit_dict_list:
+            map = d.get_map(map_type, map, -int(unit_num))
+            unit_num -= d.num
+        map = np.concatenate(map, axis=-1)
     else:
         # EASY FOR concatenate
-        map = np.zeros((MAP_SIZE, MAP_SIZE, MYSELF_NUM), dtype=np.uint8)
-    # pass the map one to one
-    for dict in unit_dict_list:
-        map = dict.get_map(map_type, map)
+        map = np.zeros((MAP_SIZE, MAP_SIZE, 3), dtype=np.uint8)
+        for dict in unit_dict_list:
+            map = dict.get_map(map_type, map)
     return map
 
 
@@ -89,7 +93,7 @@ def resize_map(map_cor):
     center = (int((map_cor[0] + map_cor[2])/2.), int((map_cor[1] + map_cor[3])/2.))
     range  = max(map_cor[2]-map_cor[0], map_cor[3]-map_cor[1])
 #    print(range, map_cor)
-    scale = (range+0.)/MAP_SIZE #(I still want a circle rather than an oval)
+    scale = range/float(MAP_SIZE) #(I still want a circle rather than an oval)
 
     return center, range, scale
 
@@ -113,7 +117,8 @@ class data_unit(object):
         self.die = False
         self.max_health = unit.max_health
         self.max_shield = unit.max_shield
-
+        self.pixel_size_x = unit.pixel_size_x
+        self.pixel_size_y = unit.pixel_size_y
 
     def update_data(self, unit):
         self.health = unit.health
@@ -167,6 +172,7 @@ class data_unit_dict(object):
         # in a fixed order
         self.id_list = sorted(self.units_dict.keys())
         self.alive_num = -1
+        self.num = len(self.id_list)
         #print(self.id_list, "id list")
 
     def update(self, units):
@@ -202,9 +208,12 @@ class data_unit_dict(object):
             mask_list.append(mask)
         return np.array(mask_list)   
 
-    def get_map(self, map_type, map):
+    def get_map(self, map_type, map, idx=None):
         #well, if the map is "unit_location", the color is only one.
-        id_index = 0 
+        id_index = 0
+        if map_type == "unit_location":
+            assert(idx is not None)
+
         for id in self.id_list:
             id_index += 1
             if self.units_dict[id].die:
@@ -214,7 +223,7 @@ class data_unit_dict(object):
             # well , the relationship between the scale of the convolution input need to be considered again.
             if map_type=="unit_location":
                 # maybe 128 can be better.
-                cv2.rectangle(map[..., id_index], p1, p2, 1, -1)
+                cv2.rectangle(map[idx+id_index], p1, p2, 1, -1)
             elif map_type=="health":
                 if unit.max_health:
                     # I think rgb allows more complicated operations
@@ -264,6 +273,7 @@ class data_unit_dict(object):
 class MapBattleEnv(sc.StarCraftEnv):
     def __init__(self, server_ip, server_port, speed=0, frame_skip=0,
                  self_play=False, max_episode_steps=1000):
+        self.map_types_table = ["unit_location", "health", "shield", "type", "flag"]
         super(MapBattleEnv, self).__init__(server_ip, server_port, speed,
                                               frame_skip, self_play,
                                               max_episode_steps)
@@ -274,7 +284,6 @@ class MapBattleEnv(sc.StarCraftEnv):
         self.nb_unit_actions = 3
         self.mask_shape = (MYSELF_NUM,)
         self.range = 0
-        self.map_types_table = ["unit_location", "health", "shield", "type", "flag"]
 
     # multiple actions.
     def _action_space(self):
@@ -295,7 +304,7 @@ class MapBattleEnv(sc.StarCraftEnv):
         map_channels = reduce(lambda x,y: x+y, [utils.map_channels_table[mt] for mt in self.map_types_table if mt != 'unit_location'])
         print("All maps occupies %i channels" % map_channels)
         obs_low = np.zeros((MAP_SIZE, MAP_SIZE, map_channels), dtype = np.uint8)
-        obs_high = other_map_low + 255)
+        obs_high = obs_low + 255
         #obs_low = np.concatenate([unit_location_obs_low, other_map_low], axis=2)
         #obs_high = np.concatenate(unit_location_obs_high, other_map_high), axis=2)
         return spaces.Box(np.array(obs_low), np.array(obs_high))
@@ -366,9 +375,10 @@ class MapBattleEnv(sc.StarCraftEnv):
         unit_locations = get_map('unit_location', unit_dict_list) # 1
         maps = []
         for mt in self.map_types_table:
+            if mt == 'unit_location':
+                continue
             maps.append(get_map(mt, unit_dict_list))
-        total_maps = np.concatenate(map, axis=2) # 2
-        
+        total_maps = np.concatenate(maps, axis=2) # 2
         #map_myself = self.myself_obs_dict.draw_maps(center, range, scale)
         #map_enemy = self.enemy_obs_dict.draw_maps(center, range, scale)
         #map = np.concatenate([map_myself, map_enemy], axis=2)
