@@ -14,7 +14,6 @@ MYSELF_NUM = 5
 ENEMY_NUM = 5
 DATA_NUM = 10
 MAP_SIZE = 40
-MYSELF_COLOR = 200
 #NORMALIZE = True
 NORMALIZE = False
 MAX_RANGE = 100
@@ -282,6 +281,7 @@ class MapBattleEnv(sc.StarCraftEnv):
         self.delta_myself_health = 0
         self.delta_enemy_health = 0
         self.nb_unit_actions = 3
+        self.unit_location_shape = (MAP_SIZE, MAP_SIZE, MYSELF_NUM)
         self.mask_shape = (MYSELF_NUM,)
         self.range = 0
 
