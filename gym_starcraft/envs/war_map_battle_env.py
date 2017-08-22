@@ -51,7 +51,8 @@ def get_map(map_type, unit_dict_list):
         for d in unit_dict_list:
             map = d.get_map(map_type, map, -int(unit_num))
             unit_num -= d.num
-        map = np.concatenate(map, axis=-1)
+        # unit_location shape is about Myself_num,Map_size,Map_size,1
+        map = np.array(map)
     else:
         # EASY FOR concatenate
         map = np.zeros((MAP_SIZE, MAP_SIZE, 3), dtype=np.uint8)
@@ -281,7 +282,8 @@ class MapBattleEnv(sc.StarCraftEnv):
         self.delta_myself_health = 0
         self.delta_enemy_health = 0
         self.nb_unit_actions = 3
-        self.unit_location_shape = (MAP_SIZE, MAP_SIZE, MYSELF_NUM)
+        # TODO test cv2.rectangle in only one channel (unit_location)
+        self.unit_location_shape = (MYSELF_NUM, MAP_SIZE, MAP_SIZE, 1)
         self.mask_shape = (MYSELF_NUM,)
         self.range = 0
 
