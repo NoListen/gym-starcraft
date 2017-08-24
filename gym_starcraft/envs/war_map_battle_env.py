@@ -19,6 +19,7 @@ NORMALIZE = False
 MAX_RANGE = 100
 HEALTH_SCALE = 20.
 TIME_SCALE = 10.
+COMPLICATE_ACTION = True#False
 
 # 96 by 96
 # static map at first
@@ -223,7 +224,7 @@ class data_unit_dict(object):
             # well , the relationship between the scale of the convolution input need to be considered again.
             if map_type=="unit_location":
                 # maybe 128 can be better.
-                cv2.rectangle(map[idx+id_index], p1, p2, 1, -1)
+                cv2.rectangle(map[idx+id_index], p1, p2, 200, -1)
             elif map_type=="health":
                 if unit.max_health:
                     # I think rgb allows more complicated operations
@@ -270,11 +271,11 @@ class data_unit_dict(object):
 
 
 
-class MapBattleEnv(sc.StarCraftEnv):
+class WarMapBattleEnv(sc.StarCraftEnv):
     def __init__(self, server_ip, server_port, speed=0, frame_skip=0,
                  self_play=False, max_episode_steps=1000):
         self.map_types_table = ["unit_location", "health", "shield", "type", "flag"]
-        super(MapBattleEnv, self).__init__(server_ip, server_port, speed,
+        super(WarMapBattleEnv, self).__init__(server_ip, server_port, speed,
                                               frame_skip, self_play,
                                               max_episode_steps)
         self.myself_health = None
@@ -333,12 +334,13 @@ class MapBattleEnv(sc.StarCraftEnv):
         if unit.id is None:
             return cmds
         if action[0] >= 0:
-            enemy_id = self.enemy_obs_dict.compute_closest_position(unit, action[1])
-            if enemy_id is None:
-                return cmds
+            if COMPLICATE_ACTION:
+                enemy_id = self.enemy_obs_dict.compute_closest_position(unit, action[1])
+                if enemy_id is None:
+                    return cmds
             # TODO: compute the enemy id based on its position ( I DON'T CARE THIS POINT )
 
-            cmds.append([tcc.command_unit_protected, unit.id, tcc.unitcommandtypes.Attack_Unit, enemy_id])
+                cmds.append([tcc.command_unit_protected, unit.id, tcc.unitcommandtypes.Attack_Unit, enemy_id])
         else:
             # Move action
             degree = action[1] * 180
@@ -374,7 +376,7 @@ class MapBattleEnv(sc.StarCraftEnv):
 
         assert("unit_location" in self.map_types_table)
         unit_dict_list = [self.myself_obs_dict, self.enemy_obs_dict]
-        unit_locations = get_map('unit_location', unit_dict_list) # 1
+        unit_locations = get_map('unit_location', [self.myself_obs_dict]) # 1
         maps = []
         for mt in self.map_types_table:
             if mt == 'unit_location':
@@ -421,7 +423,7 @@ class MapBattleEnv(sc.StarCraftEnv):
         if self.myself_obs_dict.alive_num == 0 or self.enemy_obs_dict.alive_num == 0:
             self._check_win()
             return True
-        if self.range > MAX_RANGE:# or self.peace_steps > MAX_PEACE:
+        if self.range > MAX_RANGE or self.episode_steps >= self.max_episode_steps:# or self.peace_steps > MAX_PEACE:
             self._check_win()
             self.advanced_termination = True
             return True
