@@ -1,8 +1,8 @@
 import argparse
 import os
-import gym_starcraft.envs.war_map_battle_env as sc
+import gym_starcraft.envs.dynamic_battle_env as sc
 from scipy.misc import imsave
-from gym_starcraft.envs.war_map_battle_env import MAP_SIZE
+from gym_starcraft.envs.dynamic_battle_env import MAP_SIZE
 class RandomAgent(object):
     def __init__(self, action_space):
         self.action_space = action_space
