@@ -219,14 +219,17 @@ class data_unit_dict(object):
 
     def get_map(self, map_type, map, idx=None):
         #well, if the map is "unit_location", the color is only one.
-        id_index = 0
+        id_index = -1
         if map_type == "unit_location":
             assert(idx is not None)
 
         for id in self.id_list:
             id_index += 1
             if self.units_dict[id].die:
+                if DYNAMIC:
+                    id_index -= 1
                 continue
+
             unit = self.units_dict[id]
             p1,p2 = pixel_coordinates(unit)
             # well , the relationship between the scale of the convolution input need to be considered again.
