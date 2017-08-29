@@ -136,6 +136,11 @@ class data_unit(object):
         return [self.x - self.groundRange, self.y - self.groundRange,
                 self.x + self.groundRange, self.y + self.groundRange]
 
+    def in_map(self):
+        if self.x > CROP_LT[0] and self.y > CROP_LT[1] and self.x < CROP_RB[0] and self.y < CROP_RB[1]:
+            return True
+        return False
+
     def extract_data(self, center=None, range=None, scale=None):
         # type not included
         if self.die:
@@ -204,6 +209,13 @@ class data_unit_dict(object):
             if not DYNAMIC:
                 mask_list[i] = mask
         return np.array(data_list), mask_list
+
+    def in_map(self):
+        for id in self.id_list:
+            if not self.units_dict[id].in_map():
+                return False
+        return True
+
 
     def extract_mask(self):
         if DYNAMIC:
@@ -446,8 +458,9 @@ class DynamicBattleEnv(sc.StarCraftEnv):
     # return reward as a list.
     # I need to know the range at first.
     def _compute_reward(self):
-        if self.range > MAX_RANGE or self.episode_steps == self.max_episode_steps:
-            return -5
+        # if self.range > MAX_RANGE or self.episode_steps == self.max_episode_steps:
+        if not self.myself_obs_dict.in_map() or self.episode_steps == self.max_episode_steps:
+                return -100./HEALTH_SCALE
         reward = self.delta_enemy_health/float(ENEMY_NUM) - self.delta_myself_health/float(MYSELF_NUM)
         reward = reward/HEALTH_SCALE
         return reward
@@ -474,7 +487,7 @@ class DynamicBattleEnv(sc.StarCraftEnv):
         if self.myself_obs_dict.alive_num == 0 or self.enemy_obs_dict.alive_num == 0:
             self._check_win()
             return True
-        if self.range > MAX_RANGE or self.episode_steps >= self.max_episode_steps:# or self.peace_steps > MAX_PEACE:
+        if not self.myself_obs_dict.in_map() or self.episode_steps >= self.max_episode_steps:
             self._check_win()
             self.advanced_termination = True
             return True
