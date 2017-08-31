@@ -13,15 +13,14 @@ DISTANCE_FACTOR = 16
 MYSELF_NUM = 5
 ENEMY_NUM = 5
 DATA_NUM = 10
-MAP_SIZE = 40
+MAP_SIZE = 80
 #NORMALIZE = True
 NORMALIZE = False
 MAX_RANGE = 100
 HEALTH_SCALE = 1.
 TIME_SCALE = 10.
-COMPLICATE_ACTION = True#False
-DYNAMIC = True # Dynamic means compression
-TARGET_VAR = 10000
+COMPLICATE_ACTION = True
+
 # 96 by 96
 # static map at first
 CROP_LT = (60, 100)
@@ -40,8 +39,8 @@ SCALE = (max(CROP_RB[1] - CROP_LT[1], CROP_RB[0] - CROP_LT[0]))/float(MAP_SIZE)
 def pixel_coordinates(unit):
     x0 = unit.x - unit.pixel_size_x/10. - CROP_LT[0]
     y0 = unit.y - unit.pixel_size_y/10. - CROP_LT[1]
-    x1 = x0 + unit.pixel_size_x/5.
-    y1 = y0 + unit.pixel_size_y/5.
+    x1 = x0 + unit.pixel_size_x/8.
+    y1 = y0 + unit.pixel_size_y/8.
     return (int(x0/SCALE), int(y0/SCALE)), (int(x1/SCALE), int(y1/SCALE))
 
 
@@ -148,6 +147,8 @@ class data_unit(object):
             # I am afraid there will be some memory leakage using the object.
             return [0]*DATA_NUM, 0.
 
+
+
         if center != None and range != None and scale != None:
             data = [(self.x - center[0])*2./range, (self.y - center[1])*2./range, self.health/HEALTH_SCALE, self.shield/HEALTH_SCALE, self.attackCD/TIME_SCALE, self.groundATK/HEALTH_SCALE, 
                     self.groundRange*2./range, self.under_attack, self.attacking, self.moving]
@@ -193,41 +194,31 @@ class data_unit_dict(object):
 
     def extract_data(self, center=None, range=None, scale=None):
         data_list = []
-        mask_list = np.zeros(self.num, dtype="uint8")
-        if DYNAMIC:
-            mask_list[:self.alive_num] = 1
-        # index
-        i = 0
+        mask_list = []
         for id in self.id_list:
             # zero or useful information.
             #return_stuff = self.units_dict[id].extract_data()
             #print(type(return_stuff), len(return_stuff))
 
-            # ignore this mask
+            # range can be inferred from scale and MAP_SIZE.
             data, mask = self.units_dict[id].extract_data(center, range, scale)
+            mask_list.append(mask)
             data_list.append(data)
-            if not DYNAMIC:
-                mask_list[i] = mask
-        return np.array(data_list), mask_list
+        return np.array(data_list), np.array(mask_list)
+
+
+    def extract_mask(self):
+        mask_list = []
+        for id in self.id_list:
+            mask = self.units_dict[id].extract_mask()
+            mask_list.append(mask)
+        return np.array(mask_list)   
 
     def in_map(self):
         for id in self.id_list:
             if not self.units_dict[id].in_map():
                 return False
         return True
-
-
-    def extract_mask(self):
-        if DYNAMIC:
-            mask_list = np.zeros(self.num, dtype="uint8")
-            mask_list[:self.alive_num] = 1
-            return mask_list
-
-        mask_list = []
-        for id in self.id_list:
-            mask = self.units_dict[id].extract_mask()
-            mask_list.append(mask)
-        return np.array(mask_list)   
 
     def get_map(self, map_type, map, idx=None):
         #well, if the map is "unit_location", the color is only one.
@@ -238,10 +229,7 @@ class data_unit_dict(object):
         for id in self.id_list:
             id_index += 1
             if self.units_dict[id].die:
-                if DYNAMIC:
-                    id_index -= 1
                 continue
-
             unit = self.units_dict[id]
             p1,p2 = pixel_coordinates(unit)
             # well , the relationship between the scale of the convolution input need to be considered again.
@@ -268,50 +256,37 @@ class data_unit_dict(object):
         return map
 
     # unit is a foreign unit ( not in this dict )
-    def compute_closest_position(self, unit, action):
+    def compute_closest_position(self, unit, angle):
         # unit vector
-        degree = action[1] * 180
-        # TODO consider to change the target range.
-        distance = (action[2] + 1) * unit.groundRange/2.  # at most 2*DISTANCE_FACTOR
-        tx, ty = utils.get_position2(degree, distance, unit.x, unit.y)
-        # TODO only consider those within the groundRange
-        # limit the distance between target and target unit
-        target_id = self.compute_candidate(tx, ty)
+        theta = math.radians(angle * 180)
+        unit_v1 = np.array([math.cos(theta), math.sin(theta)])
+        target_id = self.compute_candidate(unit, unit_v1)
         return target_id
 
-    def compute_candidate(self, tx, ty):
+    def compute_candidate(self, unit, unit_v1):
+        target_cos = -1
         target_id = None
-        # set it to be a big positive integer
-        d = 10000
         # not consider the same situation
         for id in self.id_list:
             if self.units_dict[id].die:
                 continue
             # TODO if the value is normalized, pay attention to change the value here.
             target_unit = self.units_dict[id]
-            td = (target_unit.x - tx)**2 + (target_unit.y - ty)**2
-            if td < d and td < TARGET_VAR:
+            v2 = np.array([target_unit.x - unit.x, target_unit.y - unit.y])
+            cos = compute_cos_value(unit_v1, v2)
+            if cos > target_cos:
+                target_cos = cos
                 target_id = target_unit.id
-                d = td
         # None or the enemy
         return target_id
 
 
 
-class DynamicBattleEnv(sc.StarCraftEnv):
+class WarMapBattleEnv(sc.StarCraftEnv):
     def __init__(self, server_ip, server_port, speed=0, frame_skip=0,
                  self_play=False, max_episode_steps=1000):
         self.map_types_table = ["unit_location", "health", "shield", "type", "flag"]
-        """
-        ul - unit location.
-        au - number of alive units
-        mask - [1, 1, 1, 0, 0] 3 alive among 5 units.
-        s - situation including health, shield, type, flag  
-        """
-        #TODO: au is not returned
-        self._observation_dtype = {'ul': "uint8", 's': "uint8", 'mask':"uint8", 'au': "int32"}
-
-        super(DynamicBattleEnv, self).__init__(server_ip, server_port, speed,
+        super(WarMapBattleEnv, self).__init__(server_ip, server_port, speed,
                                               frame_skip, self_play,
                                               max_episode_steps)
         self.myself_health = None
@@ -320,6 +295,8 @@ class DynamicBattleEnv(sc.StarCraftEnv):
         self.delta_enemy_health = 0
         self.nb_unit_actions = 3
         # TODO test cv2.rectangle in only one channel (unit_location)
+        self.unit_location_shape = (MYSELF_NUM, MAP_SIZE, MAP_SIZE, 1)
+        self.mask_shape = (MYSELF_NUM,)
         self.range = 0
 
     # multiple actions.
@@ -329,44 +306,22 @@ class DynamicBattleEnv(sc.StarCraftEnv):
         action_high = [[1.0, 1.0, 1.0] for _ in range(MYSELF_NUM)]
         return spaces.Box(np.array(action_low), np.array(action_high))
 
-    @property
-    def observation_shape(self):
-        obs_space = self.observation_space
-        # temporally not know about one scalar.
-        d = {k:obs_space[k].shape for k in obs_space.keys()}
-        return d
-
-    # encapsulate it to be safe from modification
-    @property
-    def observation_dtype(self):
-        return self._observation_dtype
 
     def _observation_space(self):
-        # unit location
-        obs_space = {}
+        # I am afraid I can't use spaces.Box to describe my observations clearluy.
+        # the map should  included 1. map 2. unit location 3. unit mask
+        # just compute for the map only.
+        # mask and unit_locationb would be seperately returned.
 
-        ul_low = np.zeros((MYSELF_NUM, MAP_SIZE, MAP_SIZE, 1), dtype=np.uint8)
-        ul_high = np.ones((ENEMY_NUM, MAP_SIZE, MAP_SIZE, 1), dtype=np.uint8)
-        ul_obs_space = spaces.Box(np.array(ul_low), np.array(ul_high))
-        obs_space["ul"] = ul_obs_space
-
+        #unit_location_obs_low = np.tile(np.zeros((MAP_SIZE, MAP_SIZE, 1), dtype=np.uint8), (0, 0, MYSELF_NUM))
+        #unit_location_obs_high = np.tile(np.ones((MAP_SIZE, MAP_SIZE, 1), dtype=np.uint8), (0, 0, MYSELF_NUM))
         map_channels = reduce(lambda x,y: x+y, [utils.map_channels_table[mt] for mt in self.map_types_table if mt != 'unit_location'])
         print("All maps occupies %i channels" % map_channels)
-        map_low = np.zeros((MAP_SIZE, MAP_SIZE, map_channels), dtype = np.uint8)
-        map_high = map_low + 255
-        map_obs_space = spaces.Box(np.array(map_low), np.array(map_high))
-        obs_space["s"] = map_obs_space
-
-        mask_low = np.zeros(MYSELF_NUM, dtype=np.uint8)
-        mask_high = np.ones(MYSELF_NUM, dtype=np.uint8)
-        mask_obs_space = spaces.Box(np.array(mask_low), np.array(mask_high))
-        obs_space["mask"] = mask_obs_space
-
-        au_obs_space = spaces.Box(np.array(0), np.array(MYSELF_NUM))
-        obs_space["au"] = au_obs_space
-
-        assert (obs_space.keys() == self._observation_dtype.keys())
-        return obs_space
+        obs_low = np.zeros((MAP_SIZE, MAP_SIZE, map_channels), dtype = np.uint8)
+        obs_high = obs_low + 255
+        #obs_low = np.concatenate([unit_location_obs_low, other_map_low], axis=2)
+        #obs_high = np.concatenate(unit_location_obs_high, other_map_high), axis=2)
+        return spaces.Box(np.array(obs_low), np.array(obs_high))
 
     def _make_commands(self, action):
         cmds = []
@@ -375,21 +330,12 @@ class DynamicBattleEnv(sc.StarCraftEnv):
         if self.state is None or action is None:
             return cmds
         # 15 for 5 units
-        # ui - unit index
-        ui = 0
         for i in range(0, MYSELF_NUM):
             # Remember to mask the loss of these actions.
             if self.myself_obs_dict.units_dict[i].die:
                 continue
-            # choose the alive one
             unit = self.myself_obs_dict.units_dict[i]
-            if DYNAMIC:
-                # DYNAMIC means [a1, a2, a3, NULL, NULL]
-                unit_action = action[ui]
-                ui += 1
-            else:
-                # STATIC means [a1, NULL, a2, NULL, a3]
-                unit_action = action[i]
+            unit_action = action[i]
             cmds += self.take_action(unit_action, unit)
         return cmds
 
@@ -400,11 +346,11 @@ class DynamicBattleEnv(sc.StarCraftEnv):
             return cmds
         if action[0] >= 0:
             if COMPLICATE_ACTION:
-                enemy_id = self.enemy_obs_dict.compute_closest_position(unit, action)
+                enemy_id = self.enemy_obs_dict.compute_closest_position(unit, action[1])
                 if enemy_id is None:
-                    print(enemy_id, "YAEH, I WANT YOU")
                     return cmds
             # TODO: compute the enemy id based on its position ( I DON'T CARE THIS POINT )
+
                 cmds.append([tcc.command_unit_protected, unit.id, tcc.unitcommandtypes.Attack_Unit, enemy_id])
         else:
             # Move action
@@ -434,7 +380,6 @@ class DynamicBattleEnv(sc.StarCraftEnv):
         if self.enemy_obs_dict is None:
             self.enemy_obs_dict = data_unit_dict(self.state.units[1], 1)
 
-        #TODO center and scale are useless temporally
         map_cor1 = self.myself_obs_dict.update(self.state.units[0])
         map_cor2 = self.enemy_obs_dict.update(self.state.units[1])
         map_cor = extreme(map_cor1, map_cor2)
@@ -449,24 +394,19 @@ class DynamicBattleEnv(sc.StarCraftEnv):
                 continue
             maps.append(get_map(mt, unit_dict_list))
         total_maps = np.concatenate(maps, axis=2) # 2
+        #map_myself = self.myself_obs_dict.draw_maps(center, range, scale)
+        #map_enemy = self.enemy_obs_dict.draw_maps(center, range, scale)
+        #map = np.concatenate([map_myself, map_enemy], axis=2)
         self.range = range
-
-        obs = {}
-        obs["ul"] = unit_locations
-        obs["s"] = total_maps
-        obs["mask"] = self.myself_obs_dict.extract_mask() # shape(MYNUM,)
-        #obs["au"] = [self.myself_obs_dict.alive_num] # shape(1,)
-        obs["au"] = self.myself_obs_dict.alive_num # shape(1,)
-        assert(obs.keys() == self._observation_dtype.keys())
         # TODO normalzie the data in each unit corresponding to the map. PPPPPPPriority HIGH.
-        return obs
+        return [unit_locations, total_maps, self.myself_obs_dict.extract_mask()]
 
     # return reward as a list.
     # I need to know the range at first.
     def _compute_reward(self):
-        # if self.range > MAX_RANGE or self.episode_steps == self.max_episode_steps:
         if not self.myself_obs_dict.in_map() or self.episode_steps == self.max_episode_steps:
-                return -100./HEALTH_SCALE
+        #if self.range > MAX_RANGE or self.episode_steps == self.max_episode_steps:
+            return -100./HEALTH_SCALE
         reward = self.delta_enemy_health/float(ENEMY_NUM) - self.delta_myself_health/float(MYSELF_NUM)
         reward = reward/HEALTH_SCALE
         return reward
@@ -474,6 +414,7 @@ class DynamicBattleEnv(sc.StarCraftEnv):
     def reset_data(self):
         while len(self.state.units) == 0 or len(self.state.units[0]) != MYSELF_NUM or len(self.state.units[1]) != ENEMY_NUM:
             #print("state has not been loaded completely", len(self.state.units[0]),len(self.state.units[1]))
+           
             self.client.send([])
             self.state = self.client.recv()
         self.range = 0
@@ -483,6 +424,7 @@ class DynamicBattleEnv(sc.StarCraftEnv):
         self.delta_enemy_health = 0
         self.myself_obs_dict = None
         self.enemy_obs_dict = None
+
         self.advanced_termination = True
 
     def _check_win(self):
@@ -493,7 +435,8 @@ class DynamicBattleEnv(sc.StarCraftEnv):
         if self.myself_obs_dict.alive_num == 0 or self.enemy_obs_dict.alive_num == 0:
             self._check_win()
             return True
-        if not self.myself_obs_dict.in_map() or self.episode_steps >= self.max_episode_steps:
+        #if self.range > MAX_RANGE or self.episode_steps >= self.max_episode_steps:# or self.peace_steps > MAX_PEACE:
+        if not self.myself_obs_dict.in_map() or self.episode_steps >= self.max_episode_steps:# or self.peace_steps > MAX_PEACE:
             self._check_win()
             self.advanced_termination = True
             return True
