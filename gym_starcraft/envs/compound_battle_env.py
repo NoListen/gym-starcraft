@@ -245,6 +245,7 @@ class data_unit_dict(object):
                 color = utils.players_color_table[self.flag]
                 cv2.rectangle(map , p1, p2, color, -1)
             else:
+                print(map_type)
                 print("Sorry, the type required can't be satisfied")
             # increase the index
             id_index += 1
@@ -286,7 +287,7 @@ class CompoundBattleEnv(sc.StarCraftEnv):
                  self_play=False, max_episode_steps=1000,
                  map_types_table=("unit_location", "unit_density", "unit_data", "health", "shield", "type", "flag")):
         self.map_types_table = map_types_table
-        self.obs_cls = list[set(utils.obs_cls_table[k] for k in self.map_types_table)] + ["mask", "au"]
+        self.obs_cls = list(set(utils.obs_cls_table[k] for k in self.map_types_table)) + ["mask", "au"]
         """
         ul - unit location.
         ud - unit data
@@ -305,7 +306,6 @@ class CompoundBattleEnv(sc.StarCraftEnv):
         self.delta_enemy_health = 0
         self.nb_unit_actions = 3
         # TODO test cv2.rectangle in only one channel (unit_location)
-        self.range = 0
 
     # multiple actions.
     def _action_space(self):
@@ -361,7 +361,7 @@ class CompoundBattleEnv(sc.StarCraftEnv):
         au_obs_space = spaces.Box(np.array(0), np.array(MYSELF_NUM))
         obs_space["au"] = au_obs_space
 
-        assert (obs_space.keys() == self._observation_dtype.keys())
+        assert (set(obs_space.keys()) == set(self.obs_cls))
         return obs_space
 
     def _make_commands(self, action):
@@ -407,6 +407,8 @@ class CompoundBattleEnv(sc.StarCraftEnv):
             degree = action[1] * 180
             distance = (action[2] + 1) * DISTANCE_FACTOR  # at most 2*DISTANCE_FACTOR
             x2, y2 = utils.get_position2(degree, distance, unit.x, unit.y)
+            x2 = min(max(x2, CROP_LT[0]), CROP_RB[0])
+            y2 = min(max(y2, CROP_LT[1]), CROP_RB[1])
             cmds.append([tcc.command_unit_protected, unit.id, tcc.unitcommandtypes.Move, -1, int(x2), int(y2)])
         return cmds
 
@@ -434,21 +436,21 @@ class CompoundBattleEnv(sc.StarCraftEnv):
         self.myself_obs_dict.update(self.state.units[0])
         self.enemy_obs_dict.update(self.state.units[1])
 
-        assert("unit_location" in self.map_types_table)
+        #assert("unit_location" in self.map_types_table)
         unit_dict_list = [self.myself_obs_dict, self.enemy_obs_dict]
-        unit_locations = get_map('unit_location', [self.myself_obs_dict]) # 1
+        #unit_locations = get_map('unit_location', [self.myself_obs_dict]) # 1
         maps = []
-        for mt in self.map_types_table:
-            if mt == 'unit_location':
-                continue
-            maps.append(get_map(mt, unit_dict_list))
-        total_maps = np.concatenate(maps, axis=2) # 2
-        self.range = range
 
         obs = {}
         if "ul" in self.obs_cls:
+            unit_locations = get_map('unit_location', [self.myself_obs_dict]) # 1
             obs["ul"] = unit_locations
         if "s" in self.obs_cls:
+            for mt in self.map_types_table:
+                if mt == 'unit_location' or mt == "unit_data":
+                    continue
+                maps.append(get_map(mt, unit_dict_list))
+            total_maps = np.concatenate(maps, axis=2) # 2
             obs["s"] = total_maps
         if "ud" in self.obs_cls:
             obs["ud"], obs["mask"] = self.myself_obs_dict.extract_data()
@@ -456,7 +458,7 @@ class CompoundBattleEnv(sc.StarCraftEnv):
             obs["mask"] = self.myself_obs_dict.extract_mask()
         #obs["au"] = [self.myself_obs_dict.alive_num] # shape(1,)
         obs["au"] = self.myself_obs_dict.alive_num
-        assert(obs.keys() == self._observation_dtype.keys())
+        #assert(obs.keys() == self._observation_dtype.keys())
         # TODO normalzie the data in each unit corresponding to the map. PPPPPPPriority HIGH.
         return obs
 
@@ -475,7 +477,6 @@ class CompoundBattleEnv(sc.StarCraftEnv):
             #print("state has not been loaded completely", len(self.state.units[0]),len(self.state.units[1]))
             self.client.send([])
             self.state = self.client.recv()
-        self.range = 0
         self.myself_health = MYSELF_NUM * 100.
         self.enemy_health = ENEMY_NUM * 100.
         self.delta_myself_health = 0
