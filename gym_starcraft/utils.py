@@ -185,9 +185,29 @@ html_color_table = [
 ]
 
 map_channels_table = {
+    "unit_density": 1,
     "unit_location": 1,
+    "unit_data": 0,
     "health": 3,
     "shield": 3,
     "type": 3,
     "flag": 3
+}
+
+obs_dtype = {
+    'ul': "uint8",
+    'ud':"float32",
+    's': "uint8",
+    'mask':"uint8",
+    'au': "int32"
+}
+
+obs_cls_table = {
+    "unit_location": "ul",
+    "unit_density": "s",
+    "unit_data": "ud",
+    "health": "s",
+    "shield": "s",
+    "type": "s",
+    "flag": "s"
 }
