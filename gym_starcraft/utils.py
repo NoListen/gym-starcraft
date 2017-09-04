@@ -14,9 +14,11 @@ def get_position(degree, distance, x1, y1):
     theta = math.pi / 2 - math.radians(degree)
     return x1 + distance * math.sin(theta), y1 + distance * math.cos(theta)
 
+
+# TODO change the action degree range
 # I can't understand the negtive operation.
 def get_position2(degree, distance, x1, y1):
-    theta = math.radians(degree) # 0-360 not -1->1
+    theta = math.radians(degree) # -180-180 not -1->1
     return x1 + distance * math.cos(theta), y1 + distance * math.sin(theta)
 
 

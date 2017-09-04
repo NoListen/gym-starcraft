@@ -12,17 +12,17 @@ import cv2
 DISTANCE_FACTOR = 16
 MYSELF_NUM = 5
 ENEMY_NUM = 5
-DATA_NUM = 7
+DATA_NUM = 10
 MAP_SIZE = 40
-HEALTH_SCALE = 1.
+HEALTH_SCALE = 20.
 TIME_SCALE = 10.
 COMPLICATE_ACTION = True#False
-DYNAMIC = True # Dynamic means compression
+DYNAMIC = False # Dynamic means compression
 TARGET_VAR = 10000
 # 96 by 96
 # static map at first
-CROP_LT = (60, 100)
-CROP_RB = (140, 180)
+CROP_LT = (40, 80)
+CROP_RB = (160, 200)
 # times relative to the map
 SCALE = (max(CROP_RB[1] - CROP_LT[1], CROP_RB[0] - CROP_LT[0]))/float(MAP_SIZE)
 # The range is kind of cheating.
@@ -132,21 +132,23 @@ class data_unit(object):
         self.die = False
 
     def in_map(self):
-        if self.x > CROP_LT[0] and self.y > CROP_LT[1] and self.x < CROP_RB[0] and self.y < CROP_RB[1]:
+        if self.x >= CROP_LT[0] and self.y >= CROP_LT[1] and self.x <= CROP_RB[0] and self.y <= CROP_RB[1]:
             return True
         return False
 
-    def extract_data(self):
+
+    def extract_data(self, unit_dict):
         # type not included
         if self.die:
             # still communicate but hope skip this one. ( convenient for experience store and replay )
             # I am afraid there will be some memory leakage using the object.
-            return [0]*DATA_NUM, 0.
+            return [100, 140, 0, 0, 0, self.groundATK/HEALTH_SCALE, self.groundRange, 0, 0, 0]+[self.groundRange, 0]*ENEMY_NUM, 0.
 
-        # data = [self.x, self.y, self.health/HEALTH_SCALE, self.shield/HEALTH_SCALE, self.attackCD/TIME_SCALE, self.groundATK/HEALTH_SCALE, self.groundRange,
-        #         self.under_attack, self.attacking, self.moving]
-        data = [self.x, self.y, self.health / HEALTH_SCALE, self.shield / HEALTH_SCALE, self.under_attack, self.attacking, self.moving]
+        data = [self.x, self.y, self.health/HEALTH_SCALE, self.shield/HEALTH_SCALE, self.attackCD/TIME_SCALE, self.groundATK/HEALTH_SCALE, self.groundRange,
+                 self.under_attack, self.attacking, self.moving]
         assert(len(data) == DATA_NUM)
+        data += unit_dict.get_distance_degree(self)
+        #data = [self.x, self.y, self.health / HEALTH_SCALE, self.shield / HEALTH_SCALE, self.under_attack, self.attacking, self.moving]
         return data, 1.
 
     def extract_mask(self):
@@ -181,14 +183,24 @@ class data_unit_dict(object):
             unit = self.units_dict[id]
             unit.update_data(u)
 
-    def extract_data(self):
+    def get_distance_degree(self, unit):
+        dd = []
+        for id in self.id_list:
+            t = self.units_dict[id]
+            distance = utils.get_distance(unit.x, unit.y, t.x, t.y)
+            degree = utils.get_degree(unit.x, unit.y, t.x, t.y)/180.
+            dd += [distance, degree]
+        return dd
+            
+
+    def extract_data(self, unit_dict):
         mask_list = np.zeros(self.num, dtype="uint8")
-        data_list = np.zeros((self.num, DATA_NUM), dtype="float32")
+        data_list = np.zeros((self.num, DATA_NUM+2*ENEMY_NUM), dtype="float32")
         i = 0
         for id in self.id_list:
             if DYNAMIC and self.units_dict[id].die:
                 continue
-            data_list[i], mask_list[i] = self.units_dict[id].extract_data()
+            data_list[i], mask_list[i] = self.units_dict[id].extract_data(unit_dict)
             i += 1
         return data_list, mask_list
 
@@ -348,8 +360,9 @@ class CompoundBattleEnv(sc.StarCraftEnv):
             obs_space["s"] = map_obs_space
 
         if "ud" in self.obs_cls:
-            unit_data_low = np.zeros((MYSELF_NUM, DATA_NUM), dtype=np.float32)
-            unit_data_high = np.array([[400, 300, 100, 100, 1.0, 1.0, 1.0]]*MYSELF_NUM, dtype=np.float32)
+            unit_data_low = np.zeros((MYSELF_NUM, DATA_NUM+ENEMY_NUM*2), dtype=np.float32)
+            unit_data_low[:,-1] = -1.
+            unit_data_high = np.array([[400, 300, 100, 100, 100, 100, 100, 1.0, 1.0, 1.0]+[400, 1.]*ENEMY_NUM]*MYSELF_NUM, dtype=np.float32)
             unit_obs_space = spaces.Box(np.array(unit_data_low), np.array(unit_data_high))
             obs_space["ud"] = unit_obs_space
 
@@ -453,11 +466,14 @@ class CompoundBattleEnv(sc.StarCraftEnv):
             total_maps = np.concatenate(maps, axis=2) # 2
             obs["s"] = total_maps
         if "ud" in self.obs_cls:
-            obs["ud"], obs["mask"] = self.myself_obs_dict.extract_data()
+            obs["ud"], obs["mask"] = self.myself_obs_dict.extract_data(self.enemy_obs_dict)
         else:
             obs["mask"] = self.myself_obs_dict.extract_mask()
         #obs["au"] = [self.myself_obs_dict.alive_num] # shape(1,)
-        obs["au"] = self.myself_obs_dict.alive_num
+        if DYNAMIC:
+            obs["au"] = self.myself_obs_dict.alive_num
+        else:
+            obs["au"] = MYSELF_NUM
         #assert(obs.keys() == self._observation_dtype.keys())
         # TODO normalzie the data in each unit corresponding to the map. PPPPPPPriority HIGH.
         return obs
