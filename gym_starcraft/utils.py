@@ -1,4 +1,31 @@
 import math
+import numpy as np
+
+# only consider two groups.
+# no alliance.
+def top_k(k, unit, unit_dict_list):
+    # f - highest distance.
+    d_list = []
+    flag_list = []
+    health_delta_list = []
+    for unit_dict in unit_dict_list
+        for t in unit_dict:
+            d = get_distance(unit.x, unit.y, t.x, t.y)
+            health_delta_list.append(t.delta_health)
+            d_list.append(d)
+            flag_list.append(unit.flag)
+    # the unit itself will be included as well. 0 distance
+    top_k_idxes = np.argsort(np.array(d_list))[:k]
+    top_k_flags = np.array(flag_list)[top_k_idxes]
+    # enemy flag 1
+    num_enemy = np.sum(top_k_flags) + 0.
+    num_myself = len(top_k_idxes) - num_enemy + 0.
+    top_k_delta = np.array(health_delta_list)[top_k_idxes]
+    myself_delta = np.multiply(top_k_delta, 1-top_k_idxes)
+    enemy_delta = np.multiply(top_k_delta, top_k_idxes)
+
+    unit_reward = enemy_delta/num_enemy - myself_delta/num_myself
+    return unit_reward
 
 
 def get_degree(x1, y1, x2, y2):

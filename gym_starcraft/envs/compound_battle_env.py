@@ -118,8 +118,10 @@ class data_unit(object):
         self.max_shield = unit.max_shield
         self.pixel_size_x = unit.pixel_size_x
         self.pixel_size_y = unit.pixel_size_y
+        self.delta_health = 0
 
     def update_data(self, unit):
+        self.delta_health = self.health - unit.health
         self.health = unit.health
         self.x = unit.x
         self.y = unit.y
@@ -135,6 +137,10 @@ class data_unit(object):
         if self.x >= CROP_LT[0] and self.y >= CROP_LT[1] and self.x <= CROP_RB[0] and self.y <= CROP_RB[1]:
             return True
         return False
+
+    @property
+    def delta_health(self):
+        return self.delta_health
 
 
     def extract_data(self, unit_dict):

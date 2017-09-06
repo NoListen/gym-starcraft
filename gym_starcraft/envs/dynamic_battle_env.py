@@ -16,6 +16,7 @@ DATA_NUM = 10
 MAP_SIZE = 40
 #NORMALIZE = True
 NORMALIZE = False
+SEPERATE_REWARDS = True
 MAX_RANGE = 100
 HEALTH_SCALE = 1.
 TIME_SCALE = 10.
@@ -122,7 +123,10 @@ class data_unit(object):
         self.pixel_size_x = unit.pixel_size_x
         self.pixel_size_y = unit.pixel_size_y
 
+        self.delta_health = 0
+
     def update_data(self, unit):
+        self.delta_health = self.health - unit.health
         self.health = unit.health
         self.x = unit.x
         self.y = unit.y
@@ -422,15 +426,12 @@ class DynamicBattleEnv(sc.StarCraftEnv):
         self.delta_myself_health = self.myself_health - myself_health
         self.enemy_health = enemy_health
         self.myself_health = myself_health
-        
-        # the shape needs to be modified.
-        # obs = np.zeros(self.observation_space.shape)
 
-        # I'd like to represent the distance in that hot map.
+        # flag 0 is myself.
         if self.myself_obs_dict is None:
             self.myself_obs_dict = data_unit_dict(self.state.units[0], 0)
 
-        # enemy's flag is one
+        # flag 1 is enemy.
         if self.enemy_obs_dict is None:
             self.enemy_obs_dict = data_unit_dict(self.state.units[1], 1)
 
