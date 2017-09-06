@@ -19,6 +19,7 @@ TIME_SCALE = 10.
 COMPLICATE_ACTION = True#False
 DYNAMIC = False # Dynamic means compression
 TARGET_VAR = 10000
+UNIT_REWARD = False
 # 96 by 96
 # static map at first
 CROP_LT = (40, 80)
@@ -61,12 +62,6 @@ def get_map(map_type, unit_dict_list):
             map = dict.get_map(map_type, map)
     return map
 
-def compute_totoal_health(units_list):
-    if len(units_list):
-        health = reduce(lambda x,y: x+y, [unit.health for unit in units_list])
-    else:
-        health = 0
-    return health
 
 # the angle is defined from the north and clockwise
 # angle ranges from -1  to 1
@@ -298,6 +293,17 @@ class data_unit_dict(object):
         # None or the enemy
         return target_id
 
+    def compute_unit_rewards(self, k, unit_dict_list):
+        idx = 0
+        rewards = np.zeros(self.num, dtype="float32")
+        for id in self.id_list:
+            unit = self.units_dict[id]
+            if unit.die and DYNAMIC:
+                continue
+            rewards[idx] = utils.unit_top_k_reward(k, unit, unit_dict_list)
+            idx += 1
+        return np.array(rewards)
+
 
 # by default, use all the maps.
 class CompoundBattleEnv(sc.StarCraftEnv):
@@ -432,13 +438,6 @@ class CompoundBattleEnv(sc.StarCraftEnv):
         return cmds
 
     def _make_observation(self):
-        # used to compute the rewards.
-        myself_health = compute_totoal_health(self.state.units[0])
-        enemy_health = compute_totoal_health(self.state.units[1])
-        self.delta_enemy_health = self.enemy_health - enemy_health
-        self.delta_myself_health = self.myself_health - myself_health
-        self.enemy_health = enemy_health
-        self.myself_health = myself_health
 
         # the shape needs to be modified.
         # obs = np.zeros(self.observation_space.shape)
@@ -487,11 +486,11 @@ class CompoundBattleEnv(sc.StarCraftEnv):
     # return reward as a list.
     # I need to know the range at first.
     def _compute_reward(self):
-        # if self.range > MAX_RANGE or self.episode_steps == self.max_episode_steps:
-        if not self.myself_obs_dict.in_map() or self.episode_steps == self.max_episode_steps:
-                return -100./HEALTH_SCALE
-        reward = self.delta_enemy_health/float(ENEMY_NUM) - self.delta_myself_health/float(MYSELF_NUM)
-        reward = reward/HEALTH_SCALE
+        unit_dict_list = [self.myself_obs_dict, self.enemy_obs_dict]
+        if UNIT_REWARD:
+            reward = self.myself_obs_dict.compute_unit_rewards(K, unit_dict_list)
+        else:
+            reward = utils.total_reward(unit_dict_list)
         return reward
 
     def reset_data(self):
@@ -499,10 +498,6 @@ class CompoundBattleEnv(sc.StarCraftEnv):
             #print("state has not been loaded completely", len(self.state.units[0]),len(self.state.units[1]))
             self.client.send([])
             self.state = self.client.recv()
-        self.myself_health = MYSELF_NUM * 100.
-        self.enemy_health = ENEMY_NUM * 100.
-        self.delta_myself_health = 0
-        self.delta_enemy_health = 0
         self.myself_obs_dict = None
         self.enemy_obs_dict = None
         self.advanced_termination = True

@@ -1,19 +1,37 @@
 import math
 import numpy as np
 
+def total_reward(unit_dict_list):
+    health_delta_list = []
+    flag_list = []
+    num_list = []
+    for unit_dict in unit_dict_list:
+        flag = unit_dict.flag
+        total_delta_health = 0
+        for t in unit_dict:
+            total_delta_health += t.delta_health
+        health_delta_list.append(total_delta_health)
+        flag_list.append(flag)
+        num_list.append(unit_dict.num)
+    health_delta_norm = np.array(health_delta_list)/(np.array(num_list) + 0.)
+    reward = np.sum(health_delta_norm * (np.array(flag_list)*2 -1))
+    return reward
+
 # only consider two groups.
 # no alliance.
-def top_k(k, unit, unit_dict_list):
+# TODO in complicated scenes, need to judge whether one unit is alliance.
+def unit_top_k_reward(k, unit, unit_dict_list):
     # f - highest distance.
     d_list = []
     flag_list = []
     health_delta_list = []
-    for unit_dict in unit_dict_list
+    for unit_dict in unit_dict_list:
+        flag = unit_dict.flag
         for t in unit_dict:
             d = get_distance(unit.x, unit.y, t.x, t.y)
             health_delta_list.append(t.delta_health)
             d_list.append(d)
-            flag_list.append(unit.flag)
+            flag_list.append(flag)
     # the unit itself will be included as well. 0 distance
     top_k_idxes = np.argsort(np.array(d_list))[:k]
     top_k_flags = np.array(flag_list)[top_k_idxes]
