@@ -19,7 +19,8 @@ TIME_SCALE = 10.
 COMPLICATE_ACTION = True#False
 DYNAMIC = False # Dynamic means compression
 TARGET_VAR = 10000
-UNIT_REWARD = False
+UNIT_REWARD = True
+K = 2
 # 96 by 96
 # static map at first
 CROP_LT = (40, 80)
@@ -351,6 +352,13 @@ class CompoundBattleEnv(sc.StarCraftEnv):
         obs_space = self.observation_space
         d = {k:utils.obs_dtype[k] for k in obs_space.keys()}
         return d
+
+    @property
+    def reward_shape(self):
+        if UNIT_REWARD:
+            return (MYSELF_NUM,)
+        else:
+            return (1,)
 
     def _observation_space(self):
         # unit location
