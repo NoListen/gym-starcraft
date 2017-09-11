@@ -8,14 +8,42 @@ def total_reward(unit_dict_list):
     for unit_dict in unit_dict_list:
         flag = unit_dict.flag
         total_delta_health = 0
-        for t in unit_dict:
-            total_delta_health += t.delta_health
+        for i in unit_dict.id_list:
+            t = unit_dict.units_dict[i]
+            if t.die:
+                continue
+            total_delta_health += t.delta_health*100./unit.max_health
         health_delta_list.append(total_delta_health)
         flag_list.append(flag)
         num_list.append(unit_dict.num)
     health_delta_norm = np.array(health_delta_list)/(np.array(num_list) + 0.)
     reward = np.sum(health_delta_norm * (np.array(flag_list)*2 -1))
     return reward
+
+def top_k_enemy_reward(k, unit, unit_dict):
+    d_list = []
+    health_delta_list = []
+    for i in unit_dict.id_list:
+        t = unit_dict.units_dict[i]
+        if t.die:
+            continue
+        d = get_distance(unit.x, unit.y, t.x, t.y)
+        health_delta_list.append(t.delta_health*100./unit.max_health)
+        d_list.append(d)
+    top_k_idxes = np.argsort(np.array(d_list))[:k]
+
+    num_enemy = len(top_k_idxes)
+
+    top_k_delta = np.array(health_delta_list)[top_k_idxes]
+    enemy_delta_norm = 0.
+    reward_added = 0
+    if num_enemy:
+        if np.array(d_list)[top_k_idxes][0] > 100:
+            reward_added = -0.5
+        enemy_delta_norm = np.sum(top_k_delta)/num_enemy
+    myself_delta_norm = (unit.delta_health*100./unit.max_health)
+    unit_reward  = enemy_delta_norm - myself_delta_norm + reward_added
+    return unit_reward
 
 # only consider two groups.
 # no alliance.
@@ -27,9 +55,12 @@ def unit_top_k_reward(k, unit, unit_dict_list):
     health_delta_list = []
     for unit_dict in unit_dict_list:
         flag = unit_dict.flag
-        for t in unit_dict:
+        for i in unit_dict.id_list:
+            t = unit_dict.units_dict[i]
+            if t.die:
+                continue
             d = get_distance(unit.x, unit.y, t.x, t.y)
-            health_delta_list.append(t.delta_health)
+            health_delta_list.append(t.delta_health*100./unit.max_health)
             d_list.append(d)
             flag_list.append(flag)
     # the unit itself will be included as well. 0 distance
@@ -39,10 +70,15 @@ def unit_top_k_reward(k, unit, unit_dict_list):
     num_enemy = np.sum(top_k_flags) + 0.
     num_myself = len(top_k_idxes) - num_enemy + 0.
     top_k_delta = np.array(health_delta_list)[top_k_idxes]
-    myself_delta = np.multiply(top_k_delta, 1-top_k_idxes)
-    enemy_delta = np.multiply(top_k_delta, top_k_idxes)
+    myself_delta_norm = 0
+    enemy_delta_norm = 0
 
-    unit_reward = enemy_delta/num_enemy - myself_delta/num_myself
+    if num_myself > 0:
+        myself_delta_norm = np.sum(np.multiply(top_k_delta, 1-top_k_idxes))/num_myself
+    if enemy_delta_norm > 0:
+        enemy_delta_norm = np.sum(np.multiply(top_k_delta, top_k_idxes))/num_enemy
+
+    unit_reward = enemy_delta_norm - myself_delta_norm
     return unit_reward
 
 

@@ -9,22 +9,27 @@ import math
 # used to draw the map
 import cv2
 
-DISTANCE_FACTOR = 16
-MYSELF_NUM = 5
-ENEMY_NUM = 5
-DATA_NUM = 10
+DISTANCE_FACTOR = 25
+MYSELF_NUM = 3
+ENEMY_NUM = 1
+DATA_NUM = 8
 MAP_SIZE = 40
 HEALTH_SCALE = 20.
 TIME_SCALE = 10.
 COMPLICATE_ACTION = True#False
 DYNAMIC = False # Dynamic means compression
-TARGET_VAR = 10000
+TARGET_VAR = 1000000
 UNIT_REWARD = True
-K = 2
+K = 4
+ENEMY_DATA_NUM = 2
+MARGIN = 10
+ENEMY_COMMAND = True
 # 96 by 96
 # static map at first
-CROP_LT = (40, 80)
-CROP_RB = (160, 200)
+#CROP_LT = (10, 10)
+CROP_LT = (60, 120)
+#CROP_RB = (240, 240)
+CROP_RB = (100, 140)
 # times relative to the map
 SCALE = (max(CROP_RB[1] - CROP_LT[1], CROP_RB[0] - CROP_LT[0]))/float(MAP_SIZE)
 # The range is kind of cheating.
@@ -114,10 +119,10 @@ class data_unit(object):
         self.max_shield = unit.max_shield
         self.pixel_size_x = unit.pixel_size_x
         self.pixel_size_y = unit.pixel_size_y
-        self.delta_health = 0
+        self._delta_health = 0
 
     def update_data(self, unit):
-        self.delta_health = self.health - unit.health
+        self._delta_health = self.health - unit.health
         self.health = unit.health
         self.x = unit.x
         self.y = unit.y
@@ -130,13 +135,13 @@ class data_unit(object):
         self.die = False
 
     def in_map(self):
-        if self.x >= CROP_LT[0] and self.y >= CROP_LT[1] and self.x <= CROP_RB[0] and self.y <= CROP_RB[1]:
+        if self.x >= CROP_LT[0]-MARGIN and self.y >= CROP_LT[1]-MARGIN and self.x <= CROP_RB[0]+MARGIN and self.y <= CROP_RB[1]+MARGIN:
             return True
         return False
 
     @property
     def delta_health(self):
-        return self.delta_health
+        return self._delta_health
 
 
     def extract_data(self, unit_dict):
@@ -144,9 +149,12 @@ class data_unit(object):
         if self.die:
             # still communicate but hope skip this one. ( convenient for experience store and replay )
             # I am afraid there will be some memory leakage using the object.
-            return [100, 140, 0, 0, 0, self.groundATK/HEALTH_SCALE, self.groundRange, 0, 0, 0]+[self.groundRange, 0]*ENEMY_NUM, 0.
+            #return [100, 140, 0, 0, 0, self.groundATK/HEALTH_SCALE, self.groundRange, 0, 0, 0]+[100, 1, 0, 0]*ENEMY_NUM, 0.
+            #return [0, 0, 0, self.groundATK/HEALTH_SCALE, self.groundRange, 0, 0, 0]+[100, 1, 0, 0]*ENEMY_NUM, 0.
+            return [ 0,0, 0, self.groundATK/HEALTH_SCALE, self.groundRange, 0, 0, 0]+[-1, 1]*ENEMY_NUM, 0.
 
-        data = [self.x, self.y, self.health/HEALTH_SCALE, self.shield/HEALTH_SCALE, self.attackCD/TIME_SCALE, self.groundATK/HEALTH_SCALE, self.groundRange,
+        #data = [self.x, self.y, self.health/HEALTH_SCALE, self.shield/HEALTH_SCALE, self.attackCD/TIME_SCALE, self.groundATK/HEALTH_SCALE, self.groundRange,
+        data = [self.health/HEALTH_SCALE, self.shield/HEALTH_SCALE, self.attackCD/TIME_SCALE, self.groundATK/HEALTH_SCALE, self.groundRange,
                  self.under_attack, self.attacking, self.moving]
         assert(len(data) == DATA_NUM)
         data += unit_dict.get_distance_degree(self)
@@ -191,13 +199,14 @@ class data_unit_dict(object):
             t = self.units_dict[id]
             distance = utils.get_distance(unit.x, unit.y, t.x, t.y)
             degree = utils.get_degree(unit.x, unit.y, t.x, t.y)/180.
+            #dd += [distance, t.die, t.groundRange, degree]
             dd += [distance, degree]
         return dd
             
 
     def extract_data(self, unit_dict):
         mask_list = np.zeros(self.num, dtype="uint8")
-        data_list = np.zeros((self.num, DATA_NUM+2*ENEMY_NUM), dtype="float32")
+        data_list = np.zeros((self.num, DATA_NUM+ENEMY_DATA_NUM*ENEMY_NUM), dtype="float32")
         i = 0
         for id in self.id_list:
             if DYNAMIC and self.units_dict[id].die:
@@ -208,6 +217,10 @@ class data_unit_dict(object):
 
     def in_map(self):
         for id in self.id_list:
+            unit = self.units_dict[id]
+            if unit.die:
+                continue
+
             if not self.units_dict[id].in_map():
                 return False
         return True
@@ -280,7 +293,7 @@ class data_unit_dict(object):
     def compute_candidate(self, tx, ty):
         target_id = None
         # set it to be a big positive integer
-        d = 10000
+        d = 90000
         # not consider the same situation
         for id in self.id_list:
             if self.units_dict[id].die:
@@ -294,13 +307,29 @@ class data_unit_dict(object):
         # None or the enemy
         return target_id
 
+    def compute_single_unit_rewards(self, k, unit_dict):
+        idx = 0
+        rewards = np.zeros(self.num, dtype="float32")
+        for id in self.id_list:
+            unit = self.units_dict[id]
+            if unit.die:
+                if not DYNAMIC:
+                    idx += 1
+                continue
+            rewards[idx] = utils.top_k_enemy_reward(k, unit, unit_dict)
+            idx += 1
+        return np.array(rewards)
+
     def compute_unit_rewards(self, k, unit_dict_list):
         idx = 0
         rewards = np.zeros(self.num, dtype="float32")
         for id in self.id_list:
             unit = self.units_dict[id]
-            if unit.die and DYNAMIC:
+            if unit.die:
+                if not DYNAMIC:
+                    idx += 1
                 continue
+                
             rewards[idx] = utils.unit_top_k_reward(k, unit, unit_dict_list)
             idx += 1
         return np.array(rewards)
@@ -380,9 +409,10 @@ class CompoundBattleEnv(sc.StarCraftEnv):
             obs_space["s"] = map_obs_space
 
         if "ud" in self.obs_cls:
-            unit_data_low = np.zeros((MYSELF_NUM, DATA_NUM+ENEMY_NUM*2), dtype=np.float32)
+            unit_data_low = np.zeros((MYSELF_NUM, DATA_NUM+ENEMY_NUM*ENEMY_DATA_NUM), dtype=np.float32)
             unit_data_low[:,-1] = -1.
-            unit_data_high = np.array([[400, 300, 100, 100, 100, 100, 100, 1.0, 1.0, 1.0]+[400, 1.]*ENEMY_NUM]*MYSELF_NUM, dtype=np.float32)
+            #unit_data_high = np.array([[400, 300, 100, 100, 100, 100, 100, 1.0, 1.0, 1.0]+[400, 1., 100,  1.]*ENEMY_NUM]*MYSELF_NUM, dtype=np.float32)
+            unit_data_high = np.array([[ 100, 100, 100, 100, 100, 1.0, 1.0, 1.0]+[400, 1.]*ENEMY_NUM]*MYSELF_NUM, dtype=np.float32)
             unit_obs_space = spaces.Box(np.array(unit_data_low), np.array(unit_data_high))
             obs_space["ud"] = unit_obs_space
 
@@ -420,6 +450,17 @@ class CompoundBattleEnv(sc.StarCraftEnv):
                 # STATIC means [a1, NULL, a2, NULL, a3]
                 unit_action = action[i]
             cmds += self.take_action(unit_action, unit)
+
+        #if ENEMY_COMMAND:
+        #    for i in range(0, ENEMY_NUM):
+        #        unit = self.enemy_obs_dict.units_dict[i]
+        #        if unit.die:
+        #            continue
+                #myself_id = self.myself_obs_dict.compute_closest_position(unit, [1, 0, 0])
+                #if myself_id:
+                #    print("Attack %i" % myself_id)
+                # cmds.append([tcc.command_unit_protected, unit.id, tcc.unitcommandtypes.Attack_Unit, myself_id])
+         #       cmds.append([tcc.command_unit_protected, unit.id, tcc.unitcommandtypes.Move, -1, 100, 100])
         return cmds
 
     def take_action(self, action, unit):
@@ -431,17 +472,17 @@ class CompoundBattleEnv(sc.StarCraftEnv):
             if COMPLICATE_ACTION:
                 enemy_id = self.enemy_obs_dict.compute_closest_position(unit, action)
                 if enemy_id is None:
-                    print(enemy_id, "YAEH, I WANT YOU")
                     return cmds
             # TODO: compute the enemy id based on its position ( I DON'T CARE THIS POINT )
                 cmds.append([tcc.command_unit_protected, unit.id, tcc.unitcommandtypes.Attack_Unit, enemy_id])
         else:
+            #print("MOVE", unit.id, uniy.x, unit.y)
             # Move action
             degree = action[1] * 180
             distance = (action[2] + 1) * DISTANCE_FACTOR  # at most 2*DISTANCE_FACTOR
             x2, y2 = utils.get_position2(degree, distance, unit.x, unit.y)
-            x2 = min(max(x2, CROP_LT[0]), CROP_RB[0])
-            y2 = min(max(y2, CROP_LT[1]), CROP_RB[1])
+            x2 = min(max(int(x2), CROP_LT[0]), CROP_RB[0])
+            y2 = min(max(int(y2), CROP_LT[1]), CROP_RB[1])
             cmds.append([tcc.command_unit_protected, unit.id, tcc.unitcommandtypes.Move, -1, int(x2), int(y2)])
         return cmds
 
@@ -496,10 +537,12 @@ class CompoundBattleEnv(sc.StarCraftEnv):
     def _compute_reward(self):
         unit_dict_list = [self.myself_obs_dict, self.enemy_obs_dict]
         if UNIT_REWARD:
+            #reward = self.myself_obs_dict.compute_single_unit_rewards(K, self.enemy_obs_dict)
             reward = self.myself_obs_dict.compute_unit_rewards(K, unit_dict_list)
         else:
             reward = utils.total_reward(unit_dict_list)
-        return reward
+        #print("#",reward,"#")
+        return reward/HEALTH_SCALE#-0.02
 
     def reset_data(self):
         while len(self.state.units) == 0 or len(self.state.units[0]) != MYSELF_NUM or len(self.state.units[1]) != ENEMY_NUM:
@@ -511,14 +554,18 @@ class CompoundBattleEnv(sc.StarCraftEnv):
         self.advanced_termination = True
 
     def _check_win(self):
-        if self.myself_health/float(MYSELF_NUM) >= self.enemy_health/float(ENEMY_NUM):
-            self.episode_wins += 1
+        if  self.enemy_obs_dict.alive_num > 0:
+            return False
+        self.episode_wins += 1
+        return True
 
     def _check_done(self):
         if self.myself_obs_dict.alive_num == 0 or self.enemy_obs_dict.alive_num == 0:
             self._check_win()
             return True
+        #if self.episode_steps >= self.max_episode_steps:
         if not self.myself_obs_dict.in_map() or self.episode_steps >= self.max_episode_steps:
+            print("time done")
             self._check_win()
             self.advanced_termination = True
             return True
