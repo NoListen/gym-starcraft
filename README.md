@@ -4,11 +4,11 @@ It has been adapted to [Torchcraft v 1.3.0](https://github.com/TorchCraft/TorchC
 # Compound Battel Env
 
 The observations are returned as one dictionary.
-- **ul**````unit location.
-- **ud**````unit data
-- **au**````number of alive units
-- **mask**``[1, 1, 1, 0, 0] 3 alive among 5 units.
-- **s**`````2D scene map including health, shield, type, flag, unit data [used for convolution network]
+- **ul**    unit location.
+- **ud**    unit data
+- **au**    number of alive units
+- **mask**  [1, 1, 1, 0, 0] 3 alive among 5 units.
+- **s**     2D scene map including health, shield, type, flag, unit data [used for convolution network]
 
 Two types of rewards
 
