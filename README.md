@@ -19,6 +19,96 @@ Two types of rewards
 
 It's compatitle with the algorithm in [multi-ddpg](https://github.com/NoListen/RL-forest/tree/master/RL_forest/ddpg_plant/multi_ddpg).
 
+# Instruction on Windows
+1. install StarCraft
+    * StarCraft (C:/ recommended)
+    * BroodWar extension
+2. install [BWAPI (v 4.1.2)](https://github.com/bwapi/bwapi)
+3. intall TorchCraft（v 1.3.0）
+    1. TorchCraft acts as a server on Windows
+    2. Refer to the [installation](https://github.com/TorchCraft/TorchCraft/blob/master/docs/user/installation.md) where I chose “TorchCraft AIClient (DLL) for users”.
+
+# Instruction on Ubuntu
+
+```
+mkdir RL
+cd RL
+git clone https://github.com/nolisten/RL-forest
+git clone https://github.com/TorchCraft/TorchCraft
+```
+
+**install Torch**
+```
+sudo apt-get curl
+curl -s https://raw.githubusercontent.com/torch/ezinstall/master/install-deps | bash
+git clone https://github.com/torch/distro.git ~/torch --recursive
+cd ~/torch; ./install.sh
+```
+the bash file is used to activate torch
+```
+echo ". /home/larryeye/RL/torch/install/bin/torch-activate" > torch-activate.sh
+```
+check 
+```
+export LD_LIBRARY_PATH=/path/to/torch/pkg/torch/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/path/to/torch/install/include:$LD_LIBRARY_PATH
+```
+in `.bashrc`
+
+**install TorchCraft**
+```
+git clone https://github.com/torchcraft/torchcraft.git --recursive
+cd torchcraft
+luarocks make *.rockspec
+```
+note: if you meet zmq.h problem
+```
+sudo add-apt-repository ppa:chris-lea/zeromq
+sudo apt-get update
+sudo apt-get install libzmq3-dev
+```
+note: if you meet zstd problem
+refer  to the [instruction](http://progur.com/2016/09/how-to-install-and-use-zstd-facebook.html)
+version 1.3.0+ is recommended
+```
+  wget https://github.com/facebook/zstd/archive/v1.3.1.tar.gz
+  tar -xzvf v1.3.1.tar.gz
+  cd zstd-1.3.1
+```
+  note: add -fPIC behind both CFLAGS and CXXFLAGS in /lib/Makefile
+```
+  sudo make install
+```
+ 
+**install TorchCraft(py)**
+```
+cd py
+pip install -e.
+```
+
+
+**install gym**
+```
+git clone https://github.com/openai/gym.git
+cd gym
+pip install -e .
+```
+
+**install gym-starcraft**
+```
+git clone https://github.com/nolisten/gym-starcraft （我在阿里的简单环境包装上做的拓展和修改）
+cd gym-starcraft
+pip install -e .
+```
+
+
+**some other packages**
+```
+pip3 install opencv-python
+pip3 install tqdm
+```
+
+
 # gym-starcraft
 Gym StarCraft is an environment bundle for OpenAI Gym. It is based on [Facebook's TorchCraft](https://github.com/TorchCraft/TorchCraft), which is a bridge between Torch and StarCraft for AI research.
 
